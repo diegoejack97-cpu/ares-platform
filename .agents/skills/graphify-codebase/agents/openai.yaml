@@ -1,0 +1,7 @@
+interface:
+  display_name: "Graphify for ARES"
+  short_description: "Map and query ARES code relationships"
+  default_prompt: "Use $graphify-codebase to build or query an approved knowledge graph of the ARES repository."
+
+policy:
+  allow_implicit_invocation: true

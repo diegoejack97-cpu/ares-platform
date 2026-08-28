@@ -1,0 +1,7 @@
+interface:
+  display_name: "ARES Frontend Engineering"
+  short_description: "Build ARES dashboards and operational UI"
+  default_prompt: "Use $ares-frontend-engineering to implement this ARES frontend task from its Notion contract."
+
+policy:
+  allow_implicit_invocation: true

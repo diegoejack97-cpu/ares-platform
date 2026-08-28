@@ -1,0 +1,7 @@
+interface:
+  display_name: "ARES Visual Identity"
+  short_description: "Keep ARES distinctive and non-generic"
+  default_prompt: "Use $ares-visual-identity to design or audit this ARES interface without generic AI aesthetics."
+
+policy:
+  allow_implicit_invocation: true
