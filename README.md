@@ -6,11 +6,11 @@ A ARES Platform é uma plataforma de inteligência comercial projetada para iden
 
 O objetivo não é vender apenas software. É localizar e recuperar valor que já existe no funil, mas se perde por demora, ausência de follow-up, propostas paradas, falta de responsável ou priorização incorreta.
 
-> **Status atual:** documentação técnica pronta para desenvolvimento. Implementação ainda não iniciada.
+> **Status atual:** Sprint M1 em andamento — monorepo, primeira fatia vertical e contratos canônicos implementados.
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Próximo marco:** Sprint M1 — Espinha dorsal.
+> **Próximo marco:** concluir a validação local das migrations/RLS e integrar Supabase Auth à fatia vertical.
 
 ## Produtos e módulos
 
@@ -83,6 +83,8 @@ Participação ou influência não é apresentada automaticamente como causalida
 - React
 - TypeScript
 - TanStack Query
+- shadcn/ui + Tailwind CSS
+- Apache ECharts, D3 e deck.gl
 - cliente gerado a partir do OpenAPI
 
 ### Backend e dados
@@ -125,7 +127,7 @@ Essas capacidades são evolução do produto. O MVP não inclui reinforcement le
 
 Nenhuma credencial do CRM real é necessária para iniciar M1. O FakeCRM sustenta o desenvolvimento até a homologação do adapter do primeiro cliente.
 
-## Estrutura planejada
+## Estrutura inicial
 
 ```text
 ares-platform/
@@ -143,7 +145,21 @@ ares-platform/
 └── README.md
 ```
 
-A estrutura final será criada durante a M1 e poderá ser ajustada conforme os primeiros contratos executáveis forem implementados.
+A estrutura foi inicializada na M1 como monorepo npm. As fronteiras continuam explícitas: frontend React em `apps/web`, API FastAPI no pacote `backend`, entrypoint de deploy em `apps/api` e infraestrutura local em `supabase`.
+
+## Execução local
+
+Pré-requisitos: Node.js 20+, Python 3.12+ e Docker Desktop para o Supabase local.
+
+```powershell
+npm install
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".\backend[dev]"
+npm run dev
+```
+
+O frontend fica em `http://localhost:5173` e a API em `http://localhost:8000`. Instruções completas, incluindo Supabase, estão em [`docs/local-development.md`](docs/local-development.md).
 
 ## Documentação
 
@@ -173,9 +189,11 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] modelo de dados canônico definido;
 - [x] plano M1–M6 fechado;
 - [x] backlog inicial preparado;
-- [ ] monorepo inicializado;
+- [x] monorepo inicializado;
 - [ ] ambientes local e homologação configurados;
-- [ ] implementação da M1 iniciada.
+- [x] implementação da M1 iniciada;
+- [x] primeira fatia vertical FakeCRM → Event Journal → interface validada;
+- [ ] migrations e políticas RLS executadas localmente com Docker.
 
 ---
 

@@ -1,0 +1,2 @@
+-- Seed data will be added after the first authenticated tenant is provisioned.
+-- No real customer data or credentials belong in this file.

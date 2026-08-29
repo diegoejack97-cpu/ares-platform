@@ -1,0 +1,38 @@
+{
+  "name": "ares-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ARES Platform monorepo",
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:all",
+    "dev:all": "concurrently -n API,WEB -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "python -m uvicorn ares.api.app:app --reload --port 8000",
+    "dev:web": "npm run dev --workspace @ares/web",
+    "build": "npm run build --workspace @ares/web",
+    "lint": "npm run lint --workspace @ares/web && npm run lint:backend",
+    "lint:backend": "python -m ruff check backend apps/api",
+    "format:check": "npm run format:check --workspace @ares/web && python -m ruff format --check backend apps/api",
+    "typecheck": "npm run typecheck --workspace @ares/web && npm run typecheck:backend",
+    "typecheck:backend": "python -m mypy backend/src apps/api",
+    "test": "npm run test --workspace @ares/web && npm run test:backend",
+    "test:backend": "python -m pytest backend/tests",
+    "quality": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build",
+    "supabase": "supabase",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "graph:update": "graphify update ."
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.5",
+    "supabase": "2.116.0"
+  }
+}
