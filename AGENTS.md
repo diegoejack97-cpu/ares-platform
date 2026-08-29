@@ -31,3 +31,17 @@
 - Nunca incluir segredos, tokens, dados reais de clientes ou payloads com PII no frontend, fixtures, screenshots ou logs.
 - Strix está adiado. Não instalar, configurar ou executar Strix sem nova autorização explícita.
 - Graphify não pode instalar pacotes, hooks ou enviar documentação para um modelo externo sem autorização específica.
+
+## graphify
+
+This project can generate a local knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships. The generated directory is ignored by Git and must be rebuilt in each checkout.
+
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- No strict or post-commit Graphify hook is installed. Generated files may change after explicit builds or incremental updates; this is not a reason to skip a valid local graph.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- Do not run semantic extraction over documentation or send repository content to an external model without explicit user approval.
