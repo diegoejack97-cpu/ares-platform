@@ -6,11 +6,11 @@ A ARES Platform é uma plataforma de inteligência comercial projetada para iden
 
 O objetivo não é vender apenas software. É localizar e recuperar valor que já existe no funil, mas se perde por demora, ausência de follow-up, propostas paradas, falta de responsável ou priorização incorreta.
 
-> **Status atual:** Sprint M1 concluída e validada localmente em 2 de setembro de 2026.
+> **Status atual:** Sprints M1 e M2 concluídas e validadas localmente em 2 de setembro de 2026.
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Próximo marco:** iniciar M2 — Signal Engine, Opportunity Engine, score, contexto e Radar.
+> **Próximo marco:** M3 — Decision Engine, agentes, Policy Layer, aprovação humana e execução idempotente.
 
 ## Produtos e módulos
 
@@ -201,6 +201,13 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] Supabase Auth, tenant e membership integrados à interface;
 - [x] webhook HMAC, inbox/job, tick worker e correlação validados ponta a ponta;
 - [x] limite preventivo de custo de IA persistido e testado.
+- [x] Signal Engine com oito regras determinísticas e `rule_version` persistido;
+- [x] Opportunity Engine com consolidação por negócio, estado, owner e SLA;
+- [x] score versionado com quatro parcelas persistidas e explicáveis;
+- [x] Context Builder SQL com teto de 2.500 tokens, citações, hash e `context_ref` opaco;
+- [x] Radar operacional com prioridade, filtros, SLA vivo e gráfico ECharts sob demanda;
+- [x] detalhe com evidências clicáveis, timeline e fronteira explícita da M3;
+- [x] fluxo webhook → tick → sinais → oportunidade → contexto → API → interface validado.
 
 ---
 

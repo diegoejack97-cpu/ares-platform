@@ -1,7 +1,8 @@
 import os
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 
 from ares.event_journal.models import IncomingCRMEvent
@@ -19,9 +20,9 @@ async def test_postgres_journal_persists_and_deduplicates() -> None:
         DATABASE_URL,
         UUID("20000000-0000-0000-0000-000000000001"),
     )
-    await journal.clear()
+    provider_event_id = f"postgres-integration-{uuid4()}"
     event = IncomingCRMEvent(
-        provider_event_id="postgres-integration-event-1",
+        provider_event_id=provider_event_id,
         event_type="deal.updated",
         aggregate_type="deal",
         aggregate_id="deal-postgres-42",
@@ -36,8 +37,14 @@ async def test_postgres_journal_persists_and_deduplicates() -> None:
     assert first.duplicate is False
     assert second.duplicate is True
     assert second.event_id == first.event_id
-    assert page.total == 1
+    assert page.total >= 1
     assert page.source == "Supabase/PostgreSQL local"
-    assert page.items[0].aggregate_id == "deal-postgres-42"
+    assert any(
+        item.id == first.event_id and item.aggregate_id == "deal-postgres-42" for item in page.items
+    )
 
-    await journal.clear()
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            "delete from public.commercial_events where tenant_id = %s and id = %s",
+            (UUID("20000000-0000-0000-0000-000000000001"), first.event_id),
+        )

@@ -6,10 +6,12 @@ import {
   ShieldCheckIcon,
   SignOutIcon,
 } from "@phosphor-icons/react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 
-import { EventJournalPage } from "@/features/event-journal/event-journal-page";
 import { useAuth } from "@/features/auth/auth-context";
+import { EventJournalPage } from "@/features/event-journal/event-journal-page";
+import { OpportunityDetailPage } from "@/features/opportunities/opportunity-detail-page";
+import { RadarPage } from "@/features/opportunities/radar-page";
 
 function App() {
   const { session, signOut } = useAuth();
@@ -25,15 +27,21 @@ function App() {
         </div>
         <div className="product-label">CONNECT · MVP</div>
         <nav aria-label="Navegação principal">
-          <a className="nav-item active" href="/">
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/journal"
+          >
             <DatabaseIcon aria-hidden /> Event Journal
-          </a>
+          </NavLink>
           <span className="nav-item future">
-            <GaugeIcon aria-hidden /> Command Center <small>M2</small>
+            <GaugeIcon aria-hidden /> Command Center <small>M6</small>
           </span>
-          <span className="nav-item future">
-            <CirclesFourIcon aria-hidden /> Radar ARES <small>M2</small>
-          </span>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/radar"
+          >
+            <CirclesFourIcon aria-hidden /> Radar ARES <small>ATIVO</small>
+          </NavLink>
           <span className="nav-item future">
             <ChartLineUpIcon aria-hidden /> Impacto ARES <small>M6</small>
           </span>
@@ -63,7 +71,14 @@ function App() {
           </button>
         </div>
         <Routes>
-          <Route path="*" element={<EventJournalPage />} />
+          <Route path="/" element={<Navigate to="/radar" replace />} />
+          <Route path="/journal" element={<EventJournalPage />} />
+          <Route path="/radar" element={<RadarPage />} />
+          <Route
+            path="/opportunities/:id"
+            element={<OpportunityDetailPage />}
+          />
+          <Route path="*" element={<Navigate to="/radar" replace />} />
         </Routes>
       </div>
     </div>

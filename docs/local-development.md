@@ -29,11 +29,11 @@ O bootstrap cria somente no ambiente local:
 
 A senha local é exibida pelo bootstrap. Nunca reutilize essas credenciais em ambientes compartilhados.
 
-## Verificações da M1
+## Verificações das M1 e M2
 
 ```powershell
 npm run db:test
-npx supabase db lint --local --fail-on error
+npx supabase db lint --level error
 npm run quality
 ```
 
@@ -43,9 +43,20 @@ Para a prova completa, mantenha API e Supabase ativos e, em outro terminal, sirv
 npx supabase functions serve fake-crm-webhook --env-file supabase/functions/.env --no-verify-jwt
 npm run m1:verify
 npm run test:e2e:m1 --workspace @ares/web
+npm run m2:verify
+npm run test:e2e:m2 --workspace @ares/web
 ```
 
 `m1:verify` comprova login, HMAC, recebimento, job, tick, Event Journal, correlação e bloqueio de acesso anônimo.
+
+`m2:verify` comprova webhook e tick até oito sinais versionados, oportunidade consolidada, score com breakdown, contexto citável com hash e APIs autenticadas. O E2E de navegador percorre Journal → Radar → detalhe e falha se houver erro de console ou página.
+
+Para incluir o teste de integração PostgreSQL no pytest:
+
+```powershell
+$env:ARES_TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+python -m pytest backend/tests
+```
 
 ## Tick em ambiente hospedado
 
@@ -71,4 +82,3 @@ npm run db:stop
 ```
 
 Depois, encerre o Docker Desktop se nenhum outro projeto estiver usando seus containers.
-

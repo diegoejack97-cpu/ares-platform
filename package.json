@@ -28,6 +28,7 @@
     "db:test": "supabase test db",
     "db:bootstrap": "node scripts/bootstrap-local.mjs",
     "m1:verify": "node scripts/verify-m1.mjs",
+    "m2:verify": "node scripts/verify-m2.mjs",
     "graph:update": "graphify update ."
   },
   "engines": {

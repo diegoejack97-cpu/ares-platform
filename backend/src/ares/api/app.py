@@ -1,11 +1,11 @@
 import asyncio
 import json
 import secrets
-from datetime import UTC, datetime
-from typing import Annotated
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -16,14 +16,17 @@ from ares.config import get_settings
 from ares.connectors.fake_crm import FakeCRMProvider
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
 from ares.event_journal.service import EventJournal, InMemoryEventJournal, PostgresEventJournal
+from ares.intelligence.service import IntelligenceService
 from ares.workers.tick import TickWorker
 
 settings = get_settings()
 journal: EventJournal
 if settings.event_journal_backend == "memory":
     journal = InMemoryEventJournal()
+    intelligence: IntelligenceService | None = None
 else:
     journal = PostgresEventJournal(settings.database_url, settings.tenant_id)
+    intelligence = IntelligenceService(settings.database_url, settings.tenant_id)
 fake_crm = FakeCRMProvider(settings.fake_crm_webhook_secret)
 auth_service = SupabaseAuthService(
     settings.supabase_url,
@@ -62,6 +65,7 @@ class SimulateEventRequest(BaseModel):
     event_type: str = "deal.updated"
     aggregate_type: str = "deal"
     aggregate_id: str | None = None
+    data: dict[str, Any] | None = None
 
 
 class TickResponse(BaseModel):
@@ -132,21 +136,79 @@ async def simulate_fake_crm_event(
     payload: SimulateEventRequest, _user: CurrentUser
 ) -> AcceptedEvent:
     aggregate_id = payload.aggregate_id or f"deal-{uuid4().hex[:8]}"
+    now = datetime.now(UTC)
+    fixture = {
+        "title": "Expansão Serra Metais — Unidade Sul",
+        "stage": "proposal",
+        "previous_stage": "negotiation",
+        "status": "open",
+        "risk": "follow_up_overdue",
+        "next_follow_up_at": (now - timedelta(days=2)).isoformat(),
+        "days_in_stage": 12,
+        "next_step": None,
+        "owner_id": None,
+        "value": 125000,
+        "currency": "BRL",
+        "days_since_contact": 14,
+        "expected_close_at": (now + timedelta(days=3)).isoformat(),
+        "fixture": True,
+    }
     incoming = IncomingCRMEvent(
         provider_event_id=f"fake-{uuid4()}",
         event_type=payload.event_type,
         aggregate_type=payload.aggregate_type,  # type: ignore[arg-type]
         aggregate_id=aggregate_id,
-        occurred_at=datetime.now(UTC),
-        data={
-            "stage": "proposal",
-            "risk": "follow_up_overdue",
-            "fixture": True,
-        },
+        occurred_at=now,
+        data=payload.data or fixture,
     )
     raw_body = json.dumps(incoming.model_dump(mode="json"), separators=(",", ":")).encode()
     normalized = fake_crm.verify_and_normalize(raw_body, fake_crm.sign(raw_body))
-    return await journal.record(normalized)
+    accepted = await journal.record(normalized)
+    if intelligence is not None:
+        await intelligence.process_event(accepted.event_id)
+    return accepted
+
+
+@app.get("/api/v1/opportunities")
+async def list_opportunities(
+    user: CurrentUser,
+    state_filter: str | None = Query(default=None, alias="state"),
+    owner: UUID | None = None,
+    min_score: float | None = Query(default=None, ge=0, le=1),
+    sla_before: datetime | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=25, ge=1, le=100),
+) -> dict[str, Any]:
+    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    try:
+        return await service.list_opportunities(
+            state=state_filter,
+            owner=owner,
+            min_score=min_score,
+            sla_before=sla_before,
+            cursor=cursor,
+            limit=limit,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/api/v1/opportunities/{opportunity_id}")
+async def get_opportunity(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    result = await service.get_opportunity(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="opportunity_not_found")
+    return result
+
+
+@app.get("/api/v1/opportunities/{opportunity_id}/context")
+async def get_opportunity_context(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    result = await service.get_context(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="opportunity_context_not_found")
+    return result
 
 
 @app.post("/api/v1/internal/tick", response_model=TickResponse)

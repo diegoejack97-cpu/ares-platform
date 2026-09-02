@@ -12,7 +12,7 @@ async function main() {
   })
   page.on("pageerror", (error) => pageErrors.push(error.message))
 
-  await page.goto("http://localhost:5173", { waitUntil: "networkidle" })
+  await page.goto("http://localhost:5173/journal", { waitUntil: "networkidle" })
   const loginHeading = await page
     .getByRole("heading", { name: "Entrar no ambiente" })
     .count()

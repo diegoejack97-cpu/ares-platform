@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 
 from ares.event_journal.models import IncomingCRMEvent
 from ares.event_journal.service import PostgresEventJournal
+from ares.intelligence.service import IntelligenceService
 
 
 @dataclass(frozen=True)
@@ -115,7 +116,9 @@ class TickWorker:
         raw_body = self._download_raw_payload(str(receipt["raw_payload_ref"]))
         incoming = IncomingCRMEvent.model_validate_json(raw_body)
         journal = PostgresEventJournal(self._database_url, receipt["tenant_id"])
-        journal.record_sync(incoming, receipt["correlation_id"])
+        accepted = journal.record_sync(incoming, receipt["correlation_id"])
+        intelligence = IntelligenceService(self._database_url, receipt["tenant_id"])
+        intelligence.process_event_sync(accepted.event_id)
 
         with psycopg.connect(self._database_url) as connection:
             connection.execute(

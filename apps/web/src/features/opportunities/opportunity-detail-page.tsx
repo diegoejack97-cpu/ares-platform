@@ -1,0 +1,256 @@
+import {
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  LinkIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+
+import { getOpportunity, getOpportunityContext } from "./api";
+import { dateTime, money, signalLabels, slaLabel } from "./format";
+import { ScoreBar } from "./score-bar";
+
+export function OpportunityDetailPage() {
+  const { id = "" } = useParams();
+  const detail = useQuery({
+    queryKey: ["opportunity", id],
+    queryFn: () => getOpportunity(id),
+    enabled: Boolean(id),
+  });
+  const context = useQuery({
+    queryKey: ["opportunity-context", id],
+    queryFn: () => getOpportunityContext(id),
+    enabled: Boolean(id),
+  });
+
+  if (detail.isLoading)
+    return (
+      <main className="workspace">
+        <div className="detail-loading">
+          <i />
+          <i />
+          <i />
+        </div>
+      </main>
+    );
+  if (detail.isError || !detail.data)
+    return (
+      <main className="workspace">
+        <div className="empty-state">
+          <strong>Oportunidade indisponível</strong>
+          <span>
+            {detail.error?.message ?? "O recurso não existe neste tenant."}
+          </span>
+          <Link to="/radar">Voltar ao Radar</Link>
+        </div>
+      </main>
+    );
+  const { opportunity, evidence, timeline } = detail.data;
+
+  return (
+    <main className="workspace detail-page">
+      <Link className="back-link" to="/radar">
+        <ArrowLeftIcon aria-hidden /> Voltar ao Radar
+      </Link>
+      <header className="detail-header">
+        <div>
+          <span className="eyebrow">
+            Oportunidade · {opportunity.external_id}
+          </span>
+          <h1>{opportunity.title}</h1>
+          <p>
+            {opportunity.external_stage ?? "Sem estágio"} · aberta em{" "}
+            {dateTime(opportunity.opened_at)}
+          </p>
+        </div>
+        <div className="detail-score">
+          <span>Score explicável</span>
+          <ScoreBar
+            score={opportunity.score}
+            breakdown={opportunity.score_breakdown}
+          />
+          <small>{opportunity.score_version}</small>
+        </div>
+      </header>
+
+      <section className="detail-meta" aria-label="Resumo da oportunidade">
+        <div>
+          <span>Valor do negócio</span>
+          <strong>{money(opportunity.deal_value, opportunity.currency)}</strong>
+          <small>sale_value ainda não observado</small>
+        </div>
+        <div>
+          <span>SLA</span>
+          <strong>{slaLabel(opportunity.sla_at)}</strong>
+          <small>{dateTime(opportunity.sla_at)}</small>
+        </div>
+        <div>
+          <span>Estado</span>
+          <strong>{opportunity.state}</strong>
+          <small>versão {opportunity.version}</small>
+        </div>
+        <div>
+          <span>Correlação</span>
+          <code>{opportunity.correlation_id}</code>
+          <small>cadeia auditável</small>
+        </div>
+      </section>
+
+      <section className="detail-grid">
+        <div className="detail-column">
+          <section className="panel detail-section">
+            <div className="panel-heading">
+              <div>
+                <h2>Por que agora</h2>
+                <p>
+                  {evidence.length} evidências produzidas por regras
+                  determinísticas
+                </p>
+              </div>
+              <ShieldCheckIcon aria-hidden />
+            </div>
+            <div className="evidence-list">
+              {evidence.map((item) => (
+                <a
+                  key={item.id}
+                  className="evidence-card"
+                  href={`#event-${item.event_id}`}
+                >
+                  <span className="severity">S{item.severity}</span>
+                  <div>
+                    <strong>
+                      {signalLabels[item.signal_type] ?? item.signal_type}
+                    </strong>
+                    <small>
+                      {item.rule_id} · {item.rule_version}
+                    </small>
+                    <p>{JSON.stringify(item.evidence)}</p>
+                  </div>
+                  <LinkIcon aria-hidden />
+                </a>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel detail-section">
+            <div className="panel-heading">
+              <div>
+                <h2>Timeline auditável</h2>
+                <p>Transições com ator, fonte e evento de evidência</p>
+              </div>
+              <ClockIcon aria-hidden />
+            </div>
+            <ol className="timeline">
+              {timeline.map((entry) => (
+                <li
+                  key={entry.id}
+                  id={
+                    entry.evidence_event_id
+                      ? `event-${entry.evidence_event_id}`
+                      : undefined
+                  }
+                >
+                  <span>
+                    <CheckCircleIcon aria-hidden />
+                  </span>
+                  <div>
+                    <strong>
+                      {entry.from_state ?? "origem"} → {entry.to_state}
+                    </strong>
+                    <p>{entry.reason}</p>
+                    <small>
+                      {dateTime(entry.occurred_at)} · {entry.actor_type}/
+                      {entry.actor_id} · {entry.source}
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+
+        <aside className="detail-column">
+          <section className="panel detail-section score-breakdown">
+            <div className="panel-heading">
+              <div>
+                <h2>Decomposição do score</h2>
+                <p>Valores persistidos, não recalculados na interface</p>
+              </div>
+            </div>
+            <dl>
+              {Object.entries(opportunity.score_breakdown).map(
+                ([key, part]) => (
+                  <div key={key}>
+                    <dt>{key.replaceAll("_", " ")}</dt>
+                    <dd>
+                      <strong>{Math.round(part.value * 100)}</strong>
+                      <small>peso {Math.round(part.weight * 100)}%</small>
+                    </dd>
+                  </div>
+                ),
+              )}
+            </dl>
+          </section>
+
+          <section className="panel detail-section context-card">
+            <div className="panel-heading">
+              <div>
+                <h2>Context snapshot</h2>
+                <p>Memória episódica por SQL</p>
+              </div>
+            </div>
+            {context.isLoading ? (
+              <div className="context-loading">Carregando contexto…</div>
+            ) : context.data ? (
+              <dl>
+                <div>
+                  <dt>Context ref</dt>
+                  <dd>
+                    <code>{context.data.context_ref}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Tokens estimados</dt>
+                  <dd>{context.data.token_estimate} / 2.500</dd>
+                </div>
+                <div>
+                  <dt>Eventos citados</dt>
+                  <dd>{context.data.included_event_count}</dd>
+                </div>
+                <div>
+                  <dt>Hash</dt>
+                  <dd>
+                    <code>{context.data.content_hash.slice(0, 16)}…</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Corte aplicado</dt>
+                  <dd>
+                    {context.data.truncated
+                      ? `Sim (${context.data.omitted_event_count})`
+                      : "Não"}
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="context-error">
+                Contexto indisponível. {context.error?.message}
+              </p>
+            )}
+          </section>
+
+          <section className="panel recommendation-empty">
+            <span>M3 · Decisão e ação</span>
+            <h2>Recomendação ainda não gerada</h2>
+            <p>
+              Esta seção está intencionalmente vazia na M2. Agentes, política,
+              aprovação e execução entram na próxima sprint.
+            </p>
+          </section>
+        </aside>
+      </section>
+    </main>
+  );
+}

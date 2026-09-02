@@ -11,6 +11,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:e2e:m1": "node scripts/verify-m1.cjs",
+    "test:e2e:m2": "node scripts/verify-m2.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
