@@ -4,12 +4,15 @@ import {
   DatabaseIcon,
   GaugeIcon,
   ShieldCheckIcon,
+  SignOutIcon,
 } from "@phosphor-icons/react";
 import { Route, Routes } from "react-router-dom";
 
 import { EventJournalPage } from "@/features/event-journal/event-journal-page";
+import { useAuth } from "@/features/auth/auth-context";
 
 function App() {
+  const { session, signOut } = useAuth();
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -50,7 +53,14 @@ function App() {
         <div className="topbar">
           <span>Serra Metais Distribuidora</span>
           <span className="topbar-separator" />
-          <strong>Tenant demo</strong>
+          <strong>{session.user.email}</strong>
+          <button
+            className="sign-out"
+            type="button"
+            onClick={() => void signOut()}
+          >
+            <SignOutIcon aria-hidden /> Sair
+          </button>
         </div>
         <Routes>
           <Route path="*" element={<EventJournalPage />} />

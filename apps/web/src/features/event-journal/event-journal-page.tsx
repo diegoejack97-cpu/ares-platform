@@ -81,7 +81,7 @@ export function EventJournalPage() {
           <strong>{eventsQuery.data?.source ?? "FakeCRM local"}</strong>
         </div>
         <div>
-          <span>Eventos nesta sessão</span>
+          <span>Eventos persistidos</span>
           <strong className="tabular">{eventsQuery.data?.total ?? 0}</strong>
         </div>
         <div>
@@ -109,7 +109,7 @@ export function EventJournalPage() {
           <div className="panel-heading">
             <div>
               <h2 id="activity-title">Entrada acumulada</h2>
-              <p>Unidade: eventos · período: sessão atual</p>
+              <p>Unidade: eventos · recorte: banco local</p>
             </div>
             <Badge variant="outline">Fonte: FakeCRM</Badge>
           </div>
@@ -157,8 +157,8 @@ export function EventJournalPage() {
             </li>
           </ol>
           <p className="contract-note">
-            Persistência PostgreSQL e Auth/RLS estão modelados na migration M1 e
-            entram no próximo incremento da sprint.
+            Persistência PostgreSQL ativa. Auth/RLS e isolamento por tenant são
+            verificados pelos testes da migration M1.
           </p>
         </aside>
       </div>

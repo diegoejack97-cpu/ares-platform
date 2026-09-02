@@ -26,6 +26,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
+    "db:bootstrap": "node scripts/bootstrap-local.mjs",
+    "m1:verify": "node scripts/verify-m1.mjs",
     "graph:update": "graphify update ."
   },
   "engines": {

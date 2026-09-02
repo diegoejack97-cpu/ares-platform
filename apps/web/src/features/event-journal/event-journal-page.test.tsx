@@ -4,6 +4,16 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { EventJournalPage } from "./event-journal-page";
 
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: "test-access-token" } },
+      }),
+    },
+  },
+}));
+
 afterEach(() => {
   vi.restoreAllMocks();
 });

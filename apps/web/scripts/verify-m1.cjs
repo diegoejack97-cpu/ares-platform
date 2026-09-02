@@ -1,4 +1,5 @@
 const { chromium } = require("playwright")
+const { mkdirSync } = require("node:fs")
 
 async function main() {
   const browser = await chromium.launch({ channel: "chrome", headless: true })
@@ -12,6 +13,13 @@ async function main() {
   page.on("pageerror", (error) => pageErrors.push(error.message))
 
   await page.goto("http://localhost:5173", { waitUntil: "networkidle" })
+  const loginHeading = await page
+    .getByRole("heading", { name: "Entrar no ambiente" })
+    .count()
+  await page.getByLabel("E-mail").fill("admin@ares.local")
+  await page.getByLabel("Senha").fill("AresLocal!2026")
+  await page.getByRole("button", { name: "Entrar" }).click()
+  await page.getByRole("heading", { name: "Event Journal" }).waitFor()
   const headingCount = await page
     .getByRole("heading", { name: "Event Journal" })
     .count()
@@ -25,6 +33,7 @@ async function main() {
   const rows = await page.locator("tbody tr").count()
   const charts = await page.locator(".event-chart canvas").count()
   const imagesWithoutAlt = await page.locator("img:not([alt])").count()
+  mkdirSync("test-results", { recursive: true })
   await page.screenshot({
     path: "test-results/m1-dashboard.png",
     fullPage: true,
@@ -33,6 +42,7 @@ async function main() {
 
   const result = {
     headingCount,
+    loginHeading,
     bodyLength,
     rows,
     charts,
@@ -43,6 +53,7 @@ async function main() {
   console.log(JSON.stringify(result))
 
   if (
+    loginHeading !== 1 ||
     headingCount !== 1 ||
     rows < 1 ||
     charts !== 1 ||

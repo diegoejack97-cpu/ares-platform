@@ -1,6 +1,8 @@
 from functools import lru_cache
+from typing import Literal
+from uuid import UUID
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +17,13 @@ class Settings(BaseSettings):
     environment: str = "development"
     fake_crm_webhook_secret: str = "local-dev-only-change-me"
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    event_journal_backend: Literal["postgres", "memory"] = "postgres"
+    database_url: str = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+    tenant_id: UUID = UUID("20000000-0000-0000-0000-000000000001")
+    supabase_url: str = "http://127.0.0.1:54321"
+    supabase_publishable_key: str = ""
+    supabase_secret_key: SecretStr = SecretStr("")
+    tick_secret: SecretStr = SecretStr("local-dev-tick-secret")
 
     @model_validator(mode="after")
     def reject_development_secret_outside_development(self) -> "Settings":
@@ -23,6 +32,15 @@ class Settings(BaseSettings):
             and self.fake_crm_webhook_secret == "local-dev-only-change-me"
         ):
             raise ValueError("ARES_FAKE_CRM_WEBHOOK_SECRET must be configured")
+        if self.environment != "development" and not self.supabase_publishable_key:
+            raise ValueError("ARES_SUPABASE_PUBLISHABLE_KEY must be configured")
+        if self.environment != "development" and not self.supabase_secret_key.get_secret_value():
+            raise ValueError("ARES_SUPABASE_SECRET_KEY must be configured")
+        if (
+            self.environment != "development"
+            and self.tick_secret.get_secret_value() == "local-dev-tick-secret"
+        ):
+            raise ValueError("ARES_TICK_SECRET must be configured")
         return self
 
 

@@ -6,11 +6,11 @@ A ARES Platform é uma plataforma de inteligência comercial projetada para iden
 
 O objetivo não é vender apenas software. É localizar e recuperar valor que já existe no funil, mas se perde por demora, ausência de follow-up, propostas paradas, falta de responsável ou priorização incorreta.
 
-> **Status atual:** Sprint M1 em andamento — monorepo, primeira fatia vertical e contratos canônicos implementados.
+> **Status atual:** Sprint M1 concluída e validada localmente em 2 de setembro de 2026.
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Próximo marco:** concluir a validação local das migrations/RLS e integrar Supabase Auth à fatia vertical.
+> **Próximo marco:** iniciar M2 — Signal Engine, Opportunity Engine, score, contexto e Radar.
 
 ## Produtos e módulos
 
@@ -156,6 +156,9 @@ npm install
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".\backend[dev]"
+npm run db:start
+npm run db:reset
+npm run db:bootstrap
 npm run dev
 ```
 
@@ -190,10 +193,14 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] plano M1–M6 fechado;
 - [x] backlog inicial preparado;
 - [x] monorepo inicializado;
-- [ ] ambientes local e homologação configurados;
-- [x] implementação da M1 iniciada;
+- [x] ambiente local configurado e reproduzível;
+- [ ] ambiente de homologação configurado;
+- [x] implementação da M1 concluída;
 - [x] primeira fatia vertical FakeCRM → Event Journal → interface validada;
-- [ ] migrations e políticas RLS executadas localmente com Docker.
+- [x] migrations e políticas RLS executadas localmente com Docker;
+- [x] Supabase Auth, tenant e membership integrados à interface;
+- [x] webhook HMAC, inbox/job, tick worker e correlação validados ponta a ponta;
+- [x] limite preventivo de custo de IA persistido e testado.
 
 ---
 
