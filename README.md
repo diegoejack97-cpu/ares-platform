@@ -6,11 +6,11 @@ A ARES Platform é uma plataforma de inteligência comercial projetada para iden
 
 O objetivo não é vender apenas software. É localizar e recuperar valor que já existe no funil, mas se perde por demora, ausência de follow-up, propostas paradas, falta de responsável ou priorização incorreta.
 
-> **Status atual:** Sprints M1 e M2 concluídas e validadas localmente em 2 de setembro de 2026.
+> **Status atual:** Sprints M1, M2 e M3 concluídas e validadas localmente em 2 de setembro de 2026.
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Próximo marco:** M3 — Decision Engine, agentes, Policy Layer, aprovação humana e execução idempotente.
+> **Próximo marco:** M4 — adapter do CRM real, sincronização, reconciliação e write-back homologado.
 
 ## Produtos e módulos
 
@@ -208,6 +208,16 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] Radar operacional com prioridade, filtros, SLA vivo e gráfico ECharts sob demanda;
 - [x] detalhe com evidências clicáveis, timeline e fronteira explícita da M3;
 - [x] fluxo webhook → tick → sinais → oportunidade → contexto → API → interface validado.
+- [x] Model Factory Agno/OpenAI com output estruturado e fallback determinístico auditável;
+- [x] Triage e Follow-up Agent sem ferramentas de mutação;
+- [x] Policy Layer versionada com `allow`, `require_approval` e `deny`;
+- [x] `allow` limitado a `add_note` de baixo risco, com decisão sistêmica auditada; `create_task` exige aprovação humana e `update_stage` é bloqueado;
+- [x] recomendação, contraindicação, alternativa e confiança persistidas;
+- [x] fila humana com aprovar, editar antes de aprovar, rejeitar e conflito 409;
+- [x] `action_intent` idempotente, tentativas correlacionadas e worker FakeCRM;
+- [x] alvo de mutação resolvido exclusivamente por `context_ref`;
+- [x] `state_before_ref`, ação executada, executor, `state_after_ref` e outcome observado auditados;
+- [x] jornada M3 validada na API e no navegador, inclusive em viewport móvel.
 
 ---
 

@@ -29,6 +29,7 @@
     "db:bootstrap": "node scripts/bootstrap-local.mjs",
     "m1:verify": "node scripts/verify-m1.mjs",
     "m2:verify": "node scripts/verify-m2.mjs",
+    "m3:verify": "node scripts/verify-m3.mjs",
     "graph:update": "graphify update ."
   },
   "engines": {

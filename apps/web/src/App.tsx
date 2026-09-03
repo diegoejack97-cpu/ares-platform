@@ -9,6 +9,7 @@ import {
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "@/features/auth/auth-context";
+import { ApprovalsPage } from "@/features/decisions/approvals-page";
 import { EventJournalPage } from "@/features/event-journal/event-journal-page";
 import { OpportunityDetailPage } from "@/features/opportunities/opportunity-detail-page";
 import { RadarPage } from "@/features/opportunities/radar-page";
@@ -45,9 +46,12 @@ function App() {
           <span className="nav-item future">
             <ChartLineUpIcon aria-hidden /> Impacto ARES <small>M6</small>
           </span>
-          <span className="nav-item future">
-            <ShieldCheckIcon aria-hidden /> Auditoria <small>M3</small>
-          </span>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/approvals"
+          >
+            <ShieldCheckIcon aria-hidden /> Aprovações <small>ATIVO</small>
+          </NavLink>
         </nav>
         <div className="sidebar-foot">
           <span className="environment-dot" />
@@ -74,6 +78,7 @@ function App() {
           <Route path="/" element={<Navigate to="/radar" replace />} />
           <Route path="/journal" element={<EventJournalPage />} />
           <Route path="/radar" element={<RadarPage />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route
             path="/opportunities/:id"
             element={<OpportunityDetailPage />}

@@ -2,10 +2,11 @@ import asyncio
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -14,6 +15,8 @@ from ares.auth.models import AuthenticatedUser
 from ares.auth.service import SupabaseAuthService
 from ares.config import get_settings
 from ares.connectors.fake_crm import FakeCRMProvider
+from ares.decision.models import DecideCommand
+from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
 from ares.event_journal.service import EventJournal, InMemoryEventJournal, PostgresEventJournal
 from ares.intelligence.service import IntelligenceService
@@ -89,6 +92,17 @@ async def require_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
+
+
+def decisions_for(user: AuthenticatedUser) -> DecisionService:
+    return DecisionService(
+        settings.database_url,
+        user.tenant_id,
+        fake_crm,
+        openai_api_key=settings.openai_api_key.get_secret_value(),
+        openai_model=settings.openai_model,
+        estimated_cost_usd=Decimal(str(settings.recommendation_estimated_cost_usd)),
+    )
 
 
 @app.get("/health/live", response_model=HealthResponse)
@@ -199,6 +213,88 @@ async def get_opportunity(opportunity_id: UUID, user: CurrentUser) -> dict[str, 
     result = await service.get_opportunity(opportunity_id)
     if result is None:
         raise HTTPException(status_code=404, detail="opportunity_not_found")
+    recommendation = await decisions_for(user).get_latest_for_opportunity(opportunity_id)
+    result["recommendation"] = recommendation
+    result["recommendation_status"] = (
+        recommendation["status"] if recommendation else "not_generated"
+    )
+    return result
+
+
+@app.post(
+    "/api/v1/opportunities/{opportunity_id}/recommendations",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_recommendation(
+    opportunity_id: UUID,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    try:
+        result = await decisions_for(user).create_recommendation(opportunity_id)
+        if result.get("intent_id"):
+            worker = TickWorker(
+                settings.database_url,
+                settings.supabase_url,
+                settings.supabase_secret_key.get_secret_value(),
+                provider=fake_crm,
+            )
+            background_tasks.add_task(worker.run_once)
+        return result
+    except DecisionConflict as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": error.code, "current_version": error.current_version},
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/v1/recommendations/{recommendation_id}")
+async def get_recommendation(recommendation_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    result = await decisions_for(user).get_recommendation(recommendation_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="recommendation_not_found")
+    return result
+
+
+@app.post("/api/v1/recommendations/{recommendation_id}/decide")
+async def decide_recommendation(
+    recommendation_id: UUID,
+    command: DecideCommand,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    try:
+        result = await decisions_for(user).decide(recommendation_id, command, str(user.user_id))
+        if result.get("intent_id"):
+            worker = TickWorker(
+                settings.database_url,
+                settings.supabase_url,
+                settings.supabase_secret_key.get_secret_value(),
+                provider=fake_crm,
+            )
+            background_tasks.add_task(worker.run_once)
+        return result
+    except DecisionConflict as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": error.code, "current_version": error.current_version},
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/v1/approvals")
+async def list_approvals(user: CurrentUser) -> dict[str, Any]:
+    return await decisions_for(user).list_approvals()
+
+
+@app.get("/api/v1/actions/{intent_id}")
+async def get_action(intent_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    result = await decisions_for(user).get_action(intent_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="action_intent_not_found")
     return result
 
 
@@ -220,6 +316,7 @@ async def run_tick(x_ares_tick_secret: str | None = Header(default=None)) -> Tic
         settings.database_url,
         settings.supabase_url,
         settings.supabase_secret_key.get_secret_value(),
+        provider=fake_crm,
     )
     result = await asyncio.to_thread(worker.run_once)
     return TickResponse(

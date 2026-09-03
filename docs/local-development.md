@@ -29,7 +29,7 @@ O bootstrap cria somente no ambiente local:
 
 A senha local é exibida pelo bootstrap. Nunca reutilize essas credenciais em ambientes compartilhados.
 
-## Verificações das M1 e M2
+## Verificações das M1, M2 e M3
 
 ```powershell
 npm run db:test
@@ -45,11 +45,19 @@ npm run m1:verify
 npm run test:e2e:m1 --workspace @ares/web
 npm run m2:verify
 npm run test:e2e:m2 --workspace @ares/web
+npm run m3:verify
+npm run test:e2e:m3 --workspace @ares/web
 ```
 
 `m1:verify` comprova login, HMAC, recebimento, job, tick, Event Journal, correlação e bloqueio de acesso anônimo.
 
 `m2:verify` comprova webhook e tick até oito sinais versionados, oportunidade consolidada, score com breakdown, contexto citável com hash e APIs autenticadas. O E2E de navegador percorre Journal → Radar → detalhe e falha se houver erro de console ou página.
+
+`m3:verify` comprova recomendação estruturada, Policy Layer, conflito 409, edição humana, intent idempotente, worker, escrita no FakeCRM e resolução do alvo pelo `context_ref`. O E2E de navegador percorre a decisão completa e também falha por erro de console, overlay, falta de foco ou overflow móvel.
+
+Na Policy M3, `add_note` é a única ação de baixo risco com `allow` e segue pelo worker com decisão sistêmica, intent idempotente e auditoria. `create_task` usa `require_approval`; `update_stage` usa `deny`. Ausência de capacidade no adapter sempre converte o resultado em `deny`.
+
+`ARES_OPENAI_API_KEY` é opcional no desenvolvimento local. Sem chave, falha de modelo ou orçamento excedido, o ARES usa fallback determinístico, registra o modo degradado e mantém a aprovação humana. Nenhuma ação é perdida ou ganha autonomia adicional.
 
 Para incluir o teste de integração PostgreSQL no pytest:
 

@@ -2,27 +2,57 @@ import {
   ArrowLeftIcon,
   CheckCircleIcon,
   ClockIcon,
+  LightningIcon,
   LinkIcon,
   ShieldCheckIcon,
+  WarningCircleIcon,
 } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import { getOpportunity, getOpportunityContext } from "./api";
+import { Button } from "@/components/ui/button";
+import { RecommendationCard } from "@/features/decisions/recommendation-card";
+
+import {
+  decideRecommendation,
+  generateRecommendation,
+  getOpportunity,
+  getOpportunityContext,
+} from "./api";
 import { dateTime, money, signalLabels, slaLabel } from "./format";
 import { ScoreBar } from "./score-bar";
 
 export function OpportunityDetailPage() {
   const { id = "" } = useParams();
+  const queryClient = useQueryClient();
   const detail = useQuery({
     queryKey: ["opportunity", id],
     queryFn: () => getOpportunity(id),
     enabled: Boolean(id),
+    refetchInterval: 3_000,
   });
   const context = useQuery({
     queryKey: ["opportunity-context", id],
     queryFn: () => getOpportunityContext(id),
     enabled: Boolean(id),
+  });
+  const generate = useMutation({
+    mutationFn: () => generateRecommendation(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["opportunity", id] });
+      await queryClient.invalidateQueries({ queryKey: ["approvals"] });
+    },
+  });
+  const decide = useMutation({
+    mutationFn: (command: Parameters<typeof decideRecommendation>[1]) => {
+      if (!detail.data?.recommendation)
+        throw new Error("recommendation_missing");
+      return decideRecommendation(detail.data.recommendation.id, command);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["opportunity", id] });
+      await queryClient.invalidateQueries({ queryKey: ["approvals"] });
+    },
   });
 
   if (detail.isLoading)
@@ -47,7 +77,7 @@ export function OpportunityDetailPage() {
         </div>
       </main>
     );
-  const { opportunity, evidence, timeline } = detail.data;
+  const { opportunity, evidence, timeline, recommendation } = detail.data;
 
   return (
     <main className="workspace detail-page">
@@ -241,7 +271,47 @@ export function OpportunityDetailPage() {
             )}
           </section>
 
-          <section className="panel recommendation-empty">
+          <section className="panel recommendation-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Decisão e ação</h2>
+                <p>Recomendado não significa executado</p>
+              </div>
+              <LightningIcon aria-hidden />
+            </div>
+            {generate.isError || decide.isError ? (
+              <div className="decision-error" role="alert">
+                <WarningCircleIcon aria-hidden />
+                <span>{generate.error?.message ?? decide.error?.message}</span>
+              </div>
+            ) : null}
+            {recommendation ? (
+              <RecommendationCard
+                recommendation={recommendation}
+                pending={decide.isPending}
+                onDecide={(command) => decide.mutate(command)}
+              />
+            ) : (
+              <div className="recommendation-empty">
+                <span>M3 · Próxima melhor ação</span>
+                <h2>Recomendação ainda não gerada</h2>
+                <p>
+                  O ARES usa o snapshot auditável. Sem chave OpenAI, degrada
+                  para regra determinística e mantém aprovação humana.
+                </p>
+                <Button
+                  type="button"
+                  disabled={generate.isPending}
+                  onClick={() => generate.mutate()}
+                >
+                  <LightningIcon aria-hidden />
+                  {generate.isPending ? "Gerando…" : "Gerar recomendação"}
+                </Button>
+              </div>
+            )}
+          </section>
+
+          <section className="legacy-recommendation-empty">
             <span>M3 · Decisão e ação</span>
             <h2>Recomendação ainda não gerada</h2>
             <p>

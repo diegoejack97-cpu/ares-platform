@@ -70,8 +70,62 @@ export interface OpportunityDetail {
   };
   evidence: Evidence[];
   timeline: TimelineEntry[];
-  recommendation: null;
-  recommendation_status: "planned_for_m3";
+  recommendation: Recommendation | null;
+  recommendation_status: string;
+}
+
+export interface ActionDraft {
+  action_kind: "create_task" | "add_note" | "update_stage";
+  payload: Record<string, unknown>;
+}
+
+export interface RecommendationAlternative {
+  label: string;
+  action: ActionDraft;
+  tradeoff: string;
+}
+
+export interface Recommendation {
+  id: string;
+  intervention_id: string;
+  opportunity_id: string;
+  correlation_id: string;
+  recommended_action: ActionDraft;
+  rationale: string;
+  confidence: number;
+  alternatives: RecommendationAlternative[];
+  contraindication: string | null;
+  urgency: "low" | "normal" | "high" | "critical";
+  generation_mode: "agno_openai" | "deterministic_fallback";
+  status: string;
+  version: number;
+  context_ref: string;
+  policy_verdict: "allow" | "require_approval" | "deny";
+  policy_set: string;
+  policy_version: number;
+  policy_hash: string;
+  approval_id: string | null;
+  approval_status: string | null;
+  approval_expires_at: string | null;
+  intent_id: string | null;
+  action_status: string | null;
+  executed_action: ActionDraft | null;
+  execution_result: Record<string, unknown> | null;
+}
+
+export interface ApprovalItem extends Recommendation {
+  approval_version: number;
+  required_role: string;
+  expires_at: string;
+  created_at: string;
+  title: string;
+  deal_value: number;
+  currency: string;
+}
+
+export interface ApprovalPage {
+  items: ApprovalItem[];
+  total: number;
 }
 
 export interface ContextSnapshot {

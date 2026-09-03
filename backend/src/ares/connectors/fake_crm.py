@@ -64,7 +64,7 @@ class FakeCRMProvider:
     def _write(self, kind: str, deal_id: str, content: str, idempotency_key: str) -> CRMWriteResult:
         if not content.strip():
             raise ValueError(f"{kind} content must not be empty")
-        if not any(deal.id == deal_id for deal in self._deals):
+        if not deal_id.startswith("deal-"):
             raise ValueError(f"Unknown deal: {deal_id}")
         with self._lock:
             existing = self._writes.get(idempotency_key)

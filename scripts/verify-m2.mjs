@@ -43,7 +43,7 @@ ensure(Object.keys(opportunity.score_breakdown).length === 4, "m2_score_breakdow
 const detailResponse = await fetch(`http://127.0.0.1:8000/api/v1/opportunities/${opportunity.id}`, { headers: authorization });
 const detail = await detailResponse.json();
 ensure(detailResponse.ok && detail.evidence.length === 8 && detail.timeline.length === 2, "m2_detail_audit_chain_failed");
-ensure(detail.recommendation === null && detail.recommendation_status === "planned_for_m3", "m3_boundary_broken");
+ensure(detail.recommendation === null && detail.recommendation_status === "not_generated", "m2_to_m3_boundary_broken");
 const contextResponse = await fetch(`http://127.0.0.1:8000/api/v1/opportunities/${opportunity.id}/context`, { headers: authorization });
 const context = await contextResponse.json();
 ensure(contextResponse.ok && context.token_estimate <= 2500 && context.citations.length >= 1 && context.content_hash.length === 64, "m2_context_contract_failed");

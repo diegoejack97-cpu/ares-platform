@@ -1025,6 +1025,7 @@ h1 {
 .detail-column {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 .detail-section .panel-heading > svg {
   color: #55736b;
@@ -1076,6 +1077,16 @@ h1 {
   font:
     10px "Cascadia Code",
     monospace;
+  overflow-wrap: anywhere;
+}
+.evidence-card > div,
+.detail-section,
+.context-card dd {
+  min-width: 0;
+}
+.context-card code {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .evidence-card > svg {
   color: #72827e;
@@ -1185,9 +1196,299 @@ h1 {
   line-height: 1.5;
 }
 
+.legacy-recommendation-empty {
+  display: none;
+}
+.recommendation-panel > .decision-card {
+  border: 0;
+}
+.decision-card {
+  border: 1px solid var(--border);
+  background: #fbfaf6;
+}
+.decision-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #e9ebe5;
+  color: #65736f;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.decision-strip code {
+  margin-left: auto;
+  color: #35584f;
+}
+.urgency {
+  padding: 3px 6px;
+  border: 1px solid #a9b4af;
+}
+.urgency-critical,
+.urgency-high {
+  border-color: #ce9b82;
+  background: #f3e3dc;
+  color: #843f38;
+}
+.decision-body {
+  padding: 16px;
+}
+.decision-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.decision-title span,
+.executed-action span {
+  color: #7c8783;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.decision-title h3 {
+  margin-top: 4px;
+  color: #263f43;
+  font-size: 17px;
+}
+.decision-title svg {
+  color: #2f6b59;
+}
+.action-copy {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #d29a44;
+  background: #f2eee4;
+  color: #3e4f4c;
+  font-size: 12px;
+  font-weight: 650;
+}
+.decision-rationale {
+  margin-top: 12px;
+  color: #64736f;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.decision-alternatives {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.decision-alternatives summary {
+  padding: 9px 0;
+  color: #49675f;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+.decision-alternatives div {
+  display: grid;
+  gap: 3px;
+  padding: 0 0 10px 14px;
+}
+.decision-alternatives strong,
+.decision-alternatives span {
+  font-size: 10px;
+}
+.decision-alternatives span {
+  color: #77827e;
+}
+.contraindication {
+  display: grid;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid #ddc8a6;
+  color: #765328;
+  font-size: 10px;
+}
+.decision-audit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 14px 0 0;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+}
+.decision-audit > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.decision-audit dt {
+  color: #87908d;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.decision-audit dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: #344d48;
+  font:
+    10px "Cascadia Code",
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.decision-actions,
+.decision-edit > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+.decision-actions button,
+.decision-edit button,
+.recommendation-empty button {
+  border-radius: 0;
+}
+.decision-edit {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+}
+.decision-edit label {
+  color: #536761;
+  font-size: 10px;
+  font-weight: 700;
+}
+.decision-edit input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #9cacaa;
+  background: white;
+  color: #263d40;
+  font: inherit;
+}
+.executed-action {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px;
+  border-left: 3px solid #2f6b59;
+  background: #e4ede8;
+}
+.executed-action strong {
+  color: #294b43;
+  font-size: 12px;
+}
+.executed-action small {
+  color: #687a74;
+  font-size: 9px;
+}
+.decision-error,
+.conflict-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 14px;
+  border: 1px solid #d5aaa4;
+  background: #f4e4e1;
+  color: #823f39;
+  font-size: 11px;
+}
+.approvals-page .page-header p {
+  max-width: 620px;
+  margin-top: 7px;
+  color: #6d7a76;
+  font-size: 12px;
+}
+.approval-count {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 2px 9px;
+  min-width: 150px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid #2f6b59;
+  background: #fbfaf6;
+}
+.approval-count svg {
+  grid-row: span 2;
+  color: #2f6b59;
+}
+.approval-count strong {
+  color: #233e41;
+  font-size: 20px;
+}
+.approval-count span {
+  color: #75817d;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.conflict-banner {
+  margin-bottom: 14px;
+}
+.conflict-banner div {
+  display: grid;
+  gap: 2px;
+}
+.approval-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.approval-item {
+  border: 1px solid var(--border);
+  background: #f5f4ef;
+}
+.approval-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.approval-context div {
+  display: grid;
+  gap: 3px;
+}
+.approval-context span {
+  color: #84908c;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.approval-context a {
+  color: #2d5148;
+  font-size: 12px;
+  font-weight: 750;
+}
+.approval-context > strong {
+  color: #2c4643;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.approval-item .decision-card {
+  border: 0;
+}
+.approval-loading i {
+  height: 430px;
+  background: linear-gradient(90deg, #ebece6, #f5f4ef, #ebece6);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s linear infinite;
+}
+.approval-empty > svg {
+  width: 28px;
+  height: 28px;
+  color: #56766d;
+}
+
 @media (max-width: 1050px) {
   .radar-layout,
   .detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .approval-grid {
     grid-template-columns: 1fr;
   }
 }

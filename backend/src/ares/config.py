@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     supabase_publishable_key: str = ""
     supabase_secret_key: SecretStr = SecretStr("")
     tick_secret: SecretStr = SecretStr("local-dev-tick-secret")
+    openai_api_key: SecretStr = SecretStr("")
+    openai_model: str = "gpt-5-mini"
+    recommendation_estimated_cost_usd: float = 0.01
 
     @model_validator(mode="after")
     def reject_development_secret_outside_development(self) -> "Settings":

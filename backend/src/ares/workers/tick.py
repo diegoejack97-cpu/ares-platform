@@ -8,6 +8,8 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
+from ares.connectors.provider import CRMProvider
+from ares.decision.service import DecisionService
 from ares.event_journal.models import IncomingCRMEvent
 from ares.event_journal.service import PostgresEventJournal
 from ares.intelligence.service import IntelligenceService
@@ -30,11 +32,13 @@ class TickWorker:
         supabase_url: str,
         supabase_secret_key: str,
         worker_name: str = "ares-api",
+        provider: CRMProvider | None = None,
     ) -> None:
         self._database_url = database_url
         self._supabase_url = supabase_url.rstrip("/")
         self._supabase_secret_key = supabase_secret_key
         self._worker_name = worker_name
+        self._provider = provider
 
     def run_once(self, batch_size: int = 10) -> TickResult:
         correlation_id = uuid4()
@@ -98,37 +102,44 @@ class TickWorker:
         return [dict(row) for row in rows]
 
     def _process_job(self, job: dict[str, Any]) -> None:
-        if job["kind"] != "webhook.normalize":
-            raise ValueError("unsupported_job_kind")
-        receipt_id = UUID(str(job["payload"]["receipt_id"]))
-        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
-            receipt = connection.execute(
-                """
+        if job["kind"] == "action.execute":
+            if self._provider is None:
+                raise RuntimeError("crm_provider_missing")
+            intent_id = UUID(str(job["payload"]["intent_id"]))
+            DecisionService(
+                self._database_url, UUID(str(job["tenant_id"])), self._provider
+            ).execute_intent_sync(intent_id)
+        elif job["kind"] == "webhook.normalize":
+            receipt_id = UUID(str(job["payload"]["receipt_id"]))
+            with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+                receipt = connection.execute(
+                    """
                 select id, tenant_id, raw_payload_ref, correlation_id
                 from public.webhook_receipts
                 where id = %s and tenant_id = %s
                 """,
-                (receipt_id, job["tenant_id"]),
-            ).fetchone()
-        if receipt is None:
-            raise ValueError("receipt_not_found")
-
-        raw_body = self._download_raw_payload(str(receipt["raw_payload_ref"]))
-        incoming = IncomingCRMEvent.model_validate_json(raw_body)
-        journal = PostgresEventJournal(self._database_url, receipt["tenant_id"])
-        accepted = journal.record_sync(incoming, receipt["correlation_id"])
-        intelligence = IntelligenceService(self._database_url, receipt["tenant_id"])
-        intelligence.process_event_sync(accepted.event_id)
-
-        with psycopg.connect(self._database_url) as connection:
-            connection.execute(
-                """
+                    (receipt_id, job["tenant_id"]),
+                ).fetchone()
+            if receipt is None:
+                raise ValueError("receipt_not_found")
+            raw_body = self._download_raw_payload(str(receipt["raw_payload_ref"]))
+            incoming = IncomingCRMEvent.model_validate_json(raw_body)
+            journal = PostgresEventJournal(self._database_url, receipt["tenant_id"])
+            accepted = journal.record_sync(incoming, receipt["correlation_id"])
+            intelligence = IntelligenceService(self._database_url, receipt["tenant_id"])
+            intelligence.process_event_sync(accepted.event_id)
+            with psycopg.connect(self._database_url) as connection:
+                connection.execute(
+                    """
                 update public.webhook_receipts
                 set status = 'processed', processed_at = now(), error_code = null
                 where id = %s and tenant_id = %s
                 """,
-                (receipt_id, job["tenant_id"]),
-            )
+                    (receipt_id, job["tenant_id"]),
+                )
+        else:
+            raise ValueError("unsupported_job_kind")
+        with psycopg.connect(self._database_url) as connection:
             connection.execute(
                 """
                 update public.jobs

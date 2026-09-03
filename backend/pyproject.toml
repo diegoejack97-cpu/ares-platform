@@ -8,8 +8,10 @@ version = "0.1.0"
 description = "ARES Platform modular monolith backend"
 requires-python = ">=3.12"
 dependencies = [
+  "agno==3.0.5",
   "fastapi==0.135.2",
   "httpx==0.28.1",
+  "openai==3.7.0",
   "pydantic==2.12.5",
   "pydantic-settings==2.13.1",
   "psycopg[binary]==3.3.4",
