@@ -9,9 +9,10 @@
   ],
   "scripts": {
     "dev": "npm run dev:all",
-    "dev:all": "concurrently -n API,WEB -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:all": "concurrently -n API,WEB,CRM -c blue,green,magenta \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:sandbox\"",
     "dev:api": "python -m uvicorn ares.api.app:app --reload --port 8000",
     "dev:web": "npm run dev --workspace @ares/web",
+    "dev:sandbox": "python -m uvicorn ares.fake_crm_sandbox.app:app --reload --port 8010",
     "build": "npm run build --workspace @ares/web",
     "lint": "npm run lint --workspace @ares/web && npm run lint:backend",
     "lint:backend": "python -m ruff check backend apps/api",
@@ -30,6 +31,7 @@
     "m1:verify": "node scripts/verify-m1.mjs",
     "m2:verify": "node scripts/verify-m2.mjs",
     "m3:verify": "node scripts/verify-m3.mjs",
+    "m4:sandbox:verify": "node scripts/verify-m4-sandbox.mjs",
     "graph:update": "graphify update ."
   },
   "engines": {

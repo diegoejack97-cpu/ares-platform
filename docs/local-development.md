@@ -29,6 +29,20 @@ O bootstrap cria somente no ambiente local:
 
 A senha local é exibida pelo bootstrap. Nunca reutilize essas credenciais em ambientes compartilhados.
 
+## FakeCRM HTTP Sandbox — fundação da M4
+
+`npm run dev` inicia frontend, API ARES e o sandbox. A documentação interativa do CRM fictício
+fica em `http://127.0.0.1:8010/docs`.
+
+Para validar o contrato HTTP isoladamente:
+
+```powershell
+npm run m4:sandbox:verify
+```
+
+Consulte [`fake-crm-sandbox.md`](fake-crm-sandbox.md) para configuração, massa de dados e cenários
+de falha. O sandbox não significa que o adapter do CRM real foi homologado.
+
 ## Verificações das M1, M2 e M3
 
 ```powershell

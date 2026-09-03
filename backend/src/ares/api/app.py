@@ -15,6 +15,8 @@ from ares.auth.models import AuthenticatedUser
 from ares.auth.service import SupabaseAuthService
 from ares.config import get_settings
 from ares.connectors.fake_crm import FakeCRMProvider
+from ares.connectors.http_fake_crm import FakeCRMHTTPProvider
+from ares.connectors.provider import CRMProvider
 from ares.decision.models import DecideCommand
 from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
@@ -31,6 +33,15 @@ else:
     journal = PostgresEventJournal(settings.database_url, settings.tenant_id)
     intelligence = IntelligenceService(settings.database_url, settings.tenant_id)
 fake_crm = FakeCRMProvider(settings.fake_crm_webhook_secret)
+crm_provider: CRMProvider
+if settings.crm_provider == "http_fake":
+    crm_provider = FakeCRMHTTPProvider(
+        settings.fake_crm_base_url,
+        settings.fake_crm_api_key.get_secret_value(),
+        settings.fake_crm_timeout_seconds,
+    )
+else:
+    crm_provider = fake_crm
 auth_service = SupabaseAuthService(
     settings.supabase_url,
     settings.supabase_publishable_key,
@@ -98,7 +109,7 @@ def decisions_for(user: AuthenticatedUser) -> DecisionService:
     return DecisionService(
         settings.database_url,
         user.tenant_id,
-        fake_crm,
+        crm_provider,
         openai_api_key=settings.openai_api_key.get_secret_value(),
         openai_model=settings.openai_model,
         estimated_cost_usd=Decimal(str(settings.recommendation_estimated_cost_usd)),
@@ -237,7 +248,7 @@ async def create_recommendation(
                 settings.database_url,
                 settings.supabase_url,
                 settings.supabase_secret_key.get_secret_value(),
-                provider=fake_crm,
+                provider=crm_provider,
             )
             background_tasks.add_task(worker.run_once)
         return result
@@ -272,7 +283,7 @@ async def decide_recommendation(
                 settings.database_url,
                 settings.supabase_url,
                 settings.supabase_secret_key.get_secret_value(),
-                provider=fake_crm,
+                provider=crm_provider,
             )
             background_tasks.add_task(worker.run_once)
         return result
@@ -316,7 +327,7 @@ async def run_tick(x_ares_tick_secret: str | None = Header(default=None)) -> Tic
         settings.database_url,
         settings.supabase_url,
         settings.supabase_secret_key.get_secret_value(),
-        provider=fake_crm,
+        provider=crm_provider,
     )
     result = await asyncio.to_thread(worker.run_once)
     return TickResponse(

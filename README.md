@@ -10,7 +10,8 @@ O objetivo não é vender apenas software. É localizar e recuperar valor que j�
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Próximo marco:** M4 — adapter do CRM real, sincronização, reconciliação e write-back homologado.
+> **Marco atual:** M4 em andamento — FakeCRM HTTP Sandbox e adapter contratual entregues; integração
+> com o CRM real, sincronização, reconciliação e write-back ainda dependem da API do cliente.
 
 ## Produtos e módulos
 
@@ -66,6 +67,7 @@ Participação ou influência não é apresentada automaticamente como causalida
 - um ARES Core compartilhado entre Connect e CRM;
 - integração por contrato `CRMProvider` e adapters por fornecedor;
 - FakeCRM para desenvolvimento e testes sem dependência do cliente;
+- FakeCRM HTTP Sandbox com massa sintética determinística, falhas controladas e contract suite;
 - Event Journal com inbox, outbox, jobs, idempotência e reconciliação;
 - Postgres como persistência principal;
 - multi-tenant com Auth, RLS e RBAC desde a primeira migration;
@@ -162,7 +164,10 @@ npm run db:bootstrap
 npm run dev
 ```
 
-O frontend fica em `http://localhost:5173` e a API em `http://localhost:8000`. Instruções completas, incluindo Supabase, estão em [`docs/local-development.md`](docs/local-development.md).
+O frontend fica em `http://localhost:5173`, a API em `http://localhost:8000` e o FakeCRM HTTP
+Sandbox em `http://localhost:8010/docs`. Instruções completas, incluindo Supabase, estão em
+[`docs/local-development.md`](docs/local-development.md) e
+[`docs/fake-crm-sandbox.md`](docs/fake-crm-sandbox.md).
 
 ## Documentação
 
@@ -218,6 +223,9 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] alvo de mutação resolvido exclusivamente por `context_ref`;
 - [x] `state_before_ref`, ação executada, executor, `state_after_ref` e outcome observado auditados;
 - [x] jornada M3 validada na API e no navegador, inclusive em viewport móvel.
+- [x] FakeCRM HTTP Sandbox independente com 60 oportunidades sintéticas reproduzíveis;
+- [x] adapter HTTP selecionável por ambiente e contract suite com cursor, idempotência, conflito e falhas;
+- [ ] adapter, schema mapping, sync, reconciliação e write-back do CRM real homologados.
 
 ---
 

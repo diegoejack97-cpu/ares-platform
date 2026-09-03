@@ -1,6 +1,8 @@
 import hashlib
 import hmac
+from datetime import datetime
 from threading import Lock
+from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -35,7 +37,20 @@ class FakeCRMProvider:
     def capabilities(self) -> CRMCapabilities:
         return CRMCapabilities()
 
-    def list_deals(self, cursor: str | None = None, limit: int = 50) -> CRMDealPage:
+    def describe_schema(self) -> dict[str, Any]:
+        return {
+            "provider": "embedded-fake",
+            "entities": ["deal", "task", "note"],
+            "synthetic": True,
+        }
+
+    def list_deals(
+        self,
+        cursor: str | None = None,
+        limit: int = 50,
+        changed_after: datetime | None = None,
+    ) -> CRMDealPage:
+        del changed_after
         start = int(cursor or "0")
         items = self._deals[start : start + limit]
         next_offset = start + len(items)
@@ -48,14 +63,24 @@ class FakeCRMProvider:
     def add_note(self, deal_id: str, body: str, idempotency_key: str) -> CRMWriteResult:
         return self._write("note", deal_id, body, idempotency_key)
 
-    def update_deal_stage(self, deal_id: str, stage: str, idempotency_key: str) -> CRMWriteResult:
+    def update_deal_stage(
+        self,
+        deal_id: str,
+        stage: str,
+        idempotency_key: str,
+        expected_version: int | None = None,
+    ) -> CRMWriteResult:
         with self._lock:
             existing = self._writes.get(idempotency_key)
             if existing is not None:
                 return existing.model_copy(update={"duplicate": True})
             for index, deal in enumerate(self._deals):
                 if deal.id == deal_id:
-                    self._deals[index] = deal.model_copy(update={"stage": stage})
+                    if expected_version is not None and deal.version != expected_version:
+                        raise ValueError(f"Version conflict for deal: {deal_id}")
+                    self._deals[index] = deal.model_copy(
+                        update={"stage": stage, "version": deal.version + 1}
+                    )
                     result = CRMWriteResult(external_id=f"stage-{uuid4()}")
                     self._writes[idempotency_key] = result
                     return result

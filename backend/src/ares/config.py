@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     fake_crm_webhook_secret: str = "local-dev-only-change-me"
+    crm_provider: Literal["embedded_fake", "http_fake"] = "embedded_fake"
+    fake_crm_base_url: str = "http://127.0.0.1:8010"
+    fake_crm_api_key: SecretStr = SecretStr("local-sandbox-key")
+    fake_crm_timeout_seconds: float = 2.0
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
     event_journal_backend: Literal["postgres", "memory"] = "postgres"
     database_url: str = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
@@ -44,6 +48,14 @@ class Settings(BaseSettings):
             and self.tick_secret.get_secret_value() == "local-dev-tick-secret"
         ):
             raise ValueError("ARES_TICK_SECRET must be configured")
+        if self.fake_crm_timeout_seconds <= 0:
+            raise ValueError("ARES_FAKE_CRM_TIMEOUT_SECONDS must be greater than zero")
+        if (
+            self.environment != "development"
+            and self.crm_provider == "http_fake"
+            and self.fake_crm_api_key.get_secret_value() == "local-sandbox-key"
+        ):
+            raise ValueError("ARES_FAKE_CRM_API_KEY must be configured")
         return self
 
 
