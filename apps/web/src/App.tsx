@@ -1,8 +1,10 @@
+import { lazy, Suspense } from "react";
 import {
   ChartLineUpIcon,
   CirclesFourIcon,
   DatabaseIcon,
   GaugeIcon,
+  FlaskIcon,
   ShieldCheckIcon,
   SignOutIcon,
 } from "@phosphor-icons/react";
@@ -13,6 +15,12 @@ import { ApprovalsPage } from "@/features/decisions/approvals-page";
 import { EventJournalPage } from "@/features/event-journal/event-journal-page";
 import { OpportunityDetailPage } from "@/features/opportunities/opportunity-detail-page";
 import { RadarPage } from "@/features/opportunities/radar-page";
+
+const FakeCRMLabPage = lazy(() =>
+  import("@/features/fake-crm-lab/fake-crm-lab-page").then((module) => ({
+    default: module.FakeCRMLabPage,
+  })),
+);
 
 function App() {
   const { session, signOut } = useAuth();
@@ -33,6 +41,12 @@ function App() {
             to="/journal"
           >
             <DatabaseIcon aria-hidden /> Event Journal
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/fake-crm"
+          >
+            <FlaskIcon aria-hidden /> Laboratório CRM <small>M4</small>
           </NavLink>
           <span className="nav-item future">
             <GaugeIcon aria-hidden /> Command Center <small>M6</small>
@@ -77,6 +91,20 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/radar" replace />} />
           <Route path="/journal" element={<EventJournalPage />} />
+          <Route
+            path="/fake-crm"
+            element={
+              <Suspense
+                fallback={
+                  <main className="workspace route-loading">
+                    Preparando Laboratório FakeCRM…
+                  </main>
+                }
+              >
+                <FakeCRMLabPage />
+              </Suspense>
+            }
+          />
           <Route path="/radar" element={<RadarPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route

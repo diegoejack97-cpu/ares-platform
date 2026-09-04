@@ -9,13 +9,14 @@ from uuid import UUID, uuid4
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ares.auth.models import AuthenticatedUser
 from ares.auth.service import SupabaseAuthService
 from ares.config import get_settings
 from ares.connectors.fake_crm import FakeCRMProvider
-from ares.connectors.http_fake_crm import FakeCRMHTTPProvider
+from ares.connectors.fake_crm_lab import FakeCRMLabClient
+from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
 from ares.connectors.provider import CRMProvider
 from ares.decision.models import DecideCommand
 from ares.decision.service import DecisionConflict, DecisionService
@@ -48,6 +49,11 @@ auth_service = SupabaseAuthService(
     settings.database_url,
 )
 bearer = HTTPBearer(auto_error=False)
+fake_crm_lab = FakeCRMLabClient(
+    settings.fake_crm_base_url,
+    settings.fake_crm_api_key.get_secret_value(),
+    settings.fake_crm_timeout_seconds,
+)
 
 app = FastAPI(
     title="ARES Platform API",
@@ -89,6 +95,19 @@ class TickResponse(BaseModel):
     failed: int
 
 
+class LabTaskRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+
+
+class LabNoteRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class LabStageRequest(BaseModel):
+    stage: str = Field(min_length=1, max_length=80)
+    expected_version: int = Field(ge=1)
+
+
 async def require_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> AuthenticatedUser:
@@ -103,6 +122,28 @@ async def require_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
+
+
+def require_development() -> None:
+    if settings.environment != "development":
+        raise HTTPException(status_code=404, detail="not_found")
+
+
+def get_fake_crm_lab() -> FakeCRMLabClient:
+    return fake_crm_lab
+
+
+DevelopmentOnly = Annotated[None, Depends(require_development)]
+FakeCRMLab = Annotated[FakeCRMLabClient, Depends(get_fake_crm_lab)]
+
+
+def require_lab_admin(user: CurrentUser) -> AuthenticatedUser:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="admin_required")
+    return user
+
+
+LabAdmin = Annotated[AuthenticatedUser, Depends(require_lab_admin)]
 
 
 def decisions_for(user: AuthenticatedUser) -> DecisionService:
@@ -162,7 +203,7 @@ async def simulate_fake_crm_event(
 ) -> AcceptedEvent:
     aggregate_id = payload.aggregate_id or f"deal-{uuid4().hex[:8]}"
     now = datetime.now(UTC)
-    fixture = {
+    fixture: dict[str, Any] = {
         "title": "Expansão Serra Metais — Unidade Sul",
         "stage": "proposal",
         "previous_stage": "negotiation",
@@ -178,13 +219,14 @@ async def simulate_fake_crm_event(
         "expected_close_at": (now + timedelta(days=3)).isoformat(),
         "fixture": True,
     }
+    fixture.update(payload.data or {})
     incoming = IncomingCRMEvent(
         provider_event_id=f"fake-{uuid4()}",
         event_type=payload.event_type,
         aggregate_type=payload.aggregate_type,  # type: ignore[arg-type]
         aggregate_id=aggregate_id,
         occurred_at=now,
-        data=payload.data or fixture,
+        data=fixture,
     )
     raw_body = json.dumps(incoming.model_dump(mode="json"), separators=(",", ":")).encode()
     normalized = fake_crm.verify_and_normalize(raw_body, fake_crm.sign(raw_body))
@@ -192,6 +234,125 @@ async def simulate_fake_crm_event(
     if intelligence is not None:
         await intelligence.process_event(accepted.event_id)
     return accepted
+
+
+@app.get("/api/v1/dev/fake-crm/lab")
+async def get_fake_crm_lab_snapshot(
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> dict[str, Any]:
+    try:
+        return await client.snapshot()
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": error.code, "upstream_status": error.status_code},
+        ) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/reset")
+async def reset_fake_crm_lab(
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> dict[str, Any]:
+    try:
+        return await client.reset()
+    except CRMProviderRequestError as error:
+        raise HTTPException(status_code=502, detail={"code": error.code}) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/deals/{deal_id}/tasks")
+async def create_fake_crm_lab_task(
+    deal_id: str,
+    payload: LabTaskRequest,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    try:
+        return await client.create_task(deal_id, payload.title, idempotency_key)
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/deals/{deal_id}/notes")
+async def add_fake_crm_lab_note(
+    deal_id: str,
+    payload: LabNoteRequest,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    try:
+        return await client.add_note(deal_id, payload.body, idempotency_key)
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+
+
+@app.patch("/api/v1/dev/fake-crm/lab/deals/{deal_id}/stage")
+async def update_fake_crm_lab_stage(
+    deal_id: str,
+    payload: LabStageRequest,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    try:
+        return await client.update_stage(
+            deal_id,
+            payload.stage,
+            payload.expected_version,
+            idempotency_key,
+        )
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/deals/{deal_id}/events", response_model=AcceptedEvent)
+async def send_fake_crm_lab_event(
+    deal_id: str,
+    user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> AcceptedEvent:
+    try:
+        deal = await client.get_deal(deal_id)
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+    return await simulate_fake_crm_event(
+        SimulateEventRequest(aggregate_id=deal_id, data=deal),
+        user,
+    )
+
+
+@app.post("/api/v1/dev/fake-crm/lab/faults/{scenario}")
+async def test_fake_crm_lab_fault(
+    scenario: str,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> dict[str, Any]:
+    allowed = {"unauthorized", "not_found", "conflict", "rate_limit", "server_error", "timeout"}
+    if scenario not in allowed:
+        raise HTTPException(status_code=422, detail={"code": "unknown_scenario"})
+    return await client.simulate_fault(scenario)
 
 
 @app.get("/api/v1/opportunities")
