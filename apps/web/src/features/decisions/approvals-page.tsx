@@ -10,6 +10,9 @@ import {
   getApprovals,
 } from "@/features/opportunities/api";
 import { money } from "@/features/opportunities/format";
+import { Button } from "@/components/ui/button";
+import { Freshness } from "@/components/live/freshness";
+import { LiveValue } from "@/components/live/live-value";
 
 import { RecommendationCard } from "./recommendation-card";
 
@@ -38,16 +41,17 @@ export function ApprovalsPage() {
     <main className="workspace approvals-page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">M3 · Controle humano</span>
+          <span className="eyebrow">ARES CONNECT / CONTROLE HUMANO</span>
           <h1>Fila de aprovações</h1>
           <p>
             Recomendações aguardam decisão explícita antes de qualquer escrita
             no CRM.
           </p>
+          <Freshness timestamp={approvals.dataUpdatedAt} />
         </div>
         <div className="approval-count" aria-label="Aprovações pendentes">
           <CheckSquareOffsetIcon aria-hidden />
-          <strong>{approvals.data?.total ?? 0}</strong>
+          <strong><LiveValue value={approvals.data?.total ?? 0} /></strong>
           <span>pendentes</span>
         </div>
       </header>
@@ -74,10 +78,11 @@ export function ApprovalsPage() {
           <i />
           <i />
         </div>
-      ) : approvals.isError ? (
+      ) : approvals.isError && !approvals.data ? (
         <div className="empty-state" role="alert">
           <strong>Fila indisponível</strong>
           <span>{approvals.error.message}</span>
+          <Button variant="outline" onClick={() => void approvals.refetch()}>Tentar novamente</Button>
         </div>
       ) : approvals.data?.items.length ? (
         <section className="approval-grid" aria-label="Recomendações pendentes">

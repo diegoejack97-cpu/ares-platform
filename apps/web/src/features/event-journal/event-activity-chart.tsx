@@ -1,101 +1,166 @@
-import { useEffect, useMemo, useRef } from "react";
-import { LineChart } from "echarts/charts";
+import { useMemo } from "react";
+import type { EChartsCoreOption } from "echarts/core";
+
+import { AresChart } from "@/charts/AresChart";
 import {
-  DatasetComponent,
-  GridComponent,
-  TooltipComponent,
-} from "echarts/components";
-import { init, use as registerEChartsComponents } from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
+  ChartDataTable,
+  ChartFrame,
+  type ChartMetadata,
+} from "@/charts/ChartFrame";
+import {
+  areaFill,
+  aresTooltip,
+  categoryAxis,
+  useThemeTokens,
+  valueAxis,
+} from "@/charts/aresTheme";
 
 import type { JournalEvent } from "./types";
 
-registerEChartsComponents([
-  LineChart,
-  DatasetComponent,
-  GridComponent,
-  TooltipComponent,
-  CanvasRenderer,
-]);
+const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "short",
+  timeStyle: "medium",
+});
+const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
 
-type EventActivityChartProps = {
-  events: JournalEvent[];
-};
-
-export function EventActivityChart({ events }: EventActivityChartProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const series = useMemo(
+export function EventActivityChart({
+  events,
+  freshness,
+  source = "Event Journal / FakeCRM",
+  state = "ready",
+  onRetry,
+  partialMessage,
+}: ChartMetadata & { events: JournalEvent[] }) {
+  const tokens = useThemeTokens();
+  const validEvents = useMemo(
     () =>
-      [...events].reverse().map((event, index) => [
-        new Intl.DateTimeFormat("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }).format(new Date(event.recorded_at)),
-        index + 1,
-      ]),
+      events
+        .filter((event) => Number.isFinite(Date.parse(event.recorded_at)))
+        .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at)),
     [events],
   );
-
-  useEffect(() => {
-    if (!chartRef.current || series.length === 0) return;
-
-    const chart = init(chartRef.current, undefined, { renderer: "canvas" });
-    chart.setOption({
-      animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      dataset: { source: [["Horário", "Eventos acumulados"], ...series] },
-      grid: { left: 44, right: 16, top: 16, bottom: 28 },
-      tooltip: { trigger: "axis" },
+  const rows = useMemo(
+    () =>
+      validEvents.map((event, index) => ({
+        label: dateFormatter.format(new Date(event.recorded_at)),
+        value: index + 1,
+        detail: event.event_type,
+        id: event.id,
+      })),
+    [validEvents],
+  );
+  const missing = events.length - validEvents.length;
+  const option = useMemo<EChartsCoreOption>(
+    () => ({
+      textStyle: { fontFamily: tokens.font, color: tokens.ink },
+      grid: { left: 34, right: 10, top: 20, bottom: 27 },
+      tooltip: {
+        ...aresTooltip(tokens),
+        trigger: "axis",
+        axisPointer: {
+          type: "cross",
+          lineStyle: { color: tokens.ink2 },
+          label: { backgroundColor: tokens.raisedHi, color: tokens.ink },
+        },
+      },
       xAxis: {
-        type: "category",
-        axisLine: { lineStyle: { color: "#c9cec9" } },
-        axisLabel: { color: "#65706c", fontSize: 11 },
+        ...categoryAxis(
+          tokens,
+          validEvents.map((event) =>
+            timeFormatter.format(new Date(event.recorded_at)),
+          ),
+        ),
+        boundaryGap: false,
       },
-      yAxis: {
-        type: "value",
-        minInterval: 1,
-        axisLabel: { color: "#65706c", fontSize: 11 },
-        splitLine: { lineStyle: { color: "#e4e6e1" } },
-      },
+      yAxis: valueAxis(tokens),
       series: [
         {
+          id: "journal-activity",
           type: "line",
-          encode: { x: "Horário", y: "Eventos acumulados" },
-          showSymbol: true,
+          name: "Eventos acumulados no recorte",
+          showSymbol: validEvents.length <= 40,
+          symbol: "circle",
           symbolSize: 7,
-          lineStyle: { color: "#2f6b59", width: 2 },
-          itemStyle: {
-            color: "#2f6b59",
-            borderColor: "#f5f4ef",
-            borderWidth: 2,
+          data: validEvents.map((event, index) => ({
+            name: event.id,
+            value: index + 1,
+          })),
+          lineStyle: {
+            color: tokens.jade,
+            width: 2.5,
+            shadowColor: tokens.edgeDark,
+            shadowOffsetY: 2,
+            shadowBlur: 0,
           },
-          areaStyle: { color: "rgba(47, 107, 89, 0.10)" },
+          itemStyle: {
+            color: tokens.jade,
+            borderColor: tokens.edgeDark,
+            borderWidth: 1.5,
+            shadowColor: tokens.edgeDark,
+            shadowOffsetY: 2,
+            shadowBlur: 0,
+          },
+          areaStyle: { color: areaFill(tokens.jade) },
+          emphasis: { scale: 1.4 },
         },
       ],
-    });
-
-    const observer = new ResizeObserver(() => chart.resize());
-    observer.observe(chartRef.current);
-    return () => {
-      observer.disconnect();
-      chart.dispose();
-    };
-  }, [series]);
-
-  if (series.length === 0) {
-    return (
-      <div className="chart-empty" role="status">
-        A série começa quando o primeiro evento do FakeCRM for registrado.
-      </div>
-    );
-  }
-
+    }),
+    [tokens, validEvents],
+  );
+  const period = validEvents.length
+    ? `${dateFormatter.format(new Date(validEvents[0].recorded_at))} até ${dateFormatter.format(new Date(validEvents[validEvents.length - 1].recorded_at))}`
+    : "Recorte atual do Journal";
   return (
-    <div
-      ref={chartRef}
-      className="event-chart"
-      role="img"
-      aria-label="Linha de eventos acumulados recebidos do FakeCRM nesta sessão"
-    />
+    <ChartFrame
+      title="Entrada acumulada"
+      definition="Registros recebidos ao longo do recorte exibido"
+      unit="Eventos registrados"
+      period={period}
+      freshness={freshness}
+      source={source}
+      state={
+        state === "ready"
+          ? events.length === 0
+            ? "empty"
+            : missing
+              ? "partial"
+              : "ready"
+          : state
+      }
+      onRetry={onRetry}
+      partialMessage={
+        missing
+          ? `${missing} evento(s) sem data válida não entram na série temporal.`
+          : partialMessage
+      }
+      hasData={validEvents.length > 0}
+      emptyMessage="A série começa quando o primeiro evento válido é registrado no Journal."
+      attribution="Atividade operacional; não representa receita"
+      className="chart-event"
+      table={
+        <ChartDataTable
+          title="Entrada acumulada no recorte do Journal"
+          rows={rows.map((row) => ({
+            ...row,
+            label: `${row.label} · ${row.id.slice(0, 8)}`,
+          }))}
+          unit="Eventos acumulados"
+        />
+      }
+    >
+      <AresChart
+        option={option}
+        label="Linha de eventos acumulados, ordenados pela data de registro, somente no recorte retornado"
+        physicalAxis
+      />
+      <p className="chart-event-caption">
+        {validEvents.length} registros no recorte. A linha acompanha entradas
+        reais do Journal.
+      </p>
+    </ChartFrame>
   );
 }

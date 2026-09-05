@@ -13,12 +13,16 @@ import {
   FlaskIcon,
   GaugeIcon,
   MoonIcon,
+  ListIcon,
   ShieldCheckIcon,
   SidebarSimpleIcon,
   SignOutIcon,
   SunIcon,
 } from "@phosphor-icons/react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { getOpportunities, getApprovals } from "@/features/opportunities/api";
+import { useLiveClock } from "@/lib/live-clock";
 
 import { useAuth } from "@/features/auth/auth-context";
 import { ApprovalsPage } from "@/features/decisions/approvals-page";
@@ -37,32 +41,47 @@ function App() {
   const sidebarRef = useRef<HTMLElement>(null);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [sidebarFocused, setSidebarFocused] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const stored = localStorage.getItem("ares-theme");
+    let stored: string | null = null;
+    try { stored = localStorage.getItem("ares-theme"); } catch { /* Private browser. */ }
     if (stored === "light" || stored === "dark") return stored;
     return window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
       : "light";
   });
-  const sidebarExpanded = sidebarPinned || sidebarHovered;
+  const sidebarExpanded = sidebarPinned || sidebarHovered || sidebarFocused;
+  const now = useLiveClock();
+  const radar = useQuery({ queryKey: ["opportunities", "", 0], queryFn: () => getOpportunities({}), refetchInterval: 15_000 });
+  const approvals = useQuery({ queryKey: ["approvals"], queryFn: getApprovals, refetchInterval: 15_000 });
+  const overdueCount = radar.data?.items.filter(item => item.sla_at && Date.parse(item.sla_at) <= now).length ?? 0;
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("ares-theme", theme);
+    try { localStorage.setItem("ares-theme", theme); } catch { /* Theme still works in-memory. */ }
   }, [theme]);
 
   useEffect(() => {
-    if (!sidebarPinned) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
       if (!sidebarRef.current?.contains(event.target as Node)) {
         setSidebarPinned(false);
+        setSidebarHovered(false);
+        setSidebarFocused(false);
       }
     };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if(event.key !== "Escape") return;
+      setSidebarPinned(false); setSidebarHovered(false); setSidebarFocused(false);
+      if(sidebarRef.current?.contains(document.activeElement)) (document.activeElement as HTMLElement)?.blur();
+    };
     document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () =>
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [sidebarPinned]);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   return (
     <div className="app-shell" data-sidebar-expanded={sidebarExpanded}>
@@ -72,7 +91,10 @@ function App() {
         data-expanded={sidebarExpanded}
         onMouseEnter={() => setSidebarHovered(true)}
         onMouseLeave={() => setSidebarHovered(false)}
-        onClickCapture={() => setSidebarPinned(true)}
+        onClick={(event) => { if (!(event.target as HTMLElement).closest(".sidebar-pin")) setSidebarPinned(true); }}
+        onFocusCapture={() => setSidebarFocused(true)}
+        onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSidebarFocused(false); }}
+        aria-label="Menu ARES"
       >
         <div className="brand">
           <span className="brand-mark">A</span>
@@ -86,14 +108,15 @@ function App() {
             aria-label={sidebarPinned ? "Menu fixado" : "Fixar menu aberto"}
             aria-pressed={sidebarPinned}
             title={sidebarPinned ? "Clique fora para recolher" : "Fixar menu"}
+            onClick={() => { setSidebarPinned(!sidebarPinned); if(sidebarPinned) {setSidebarFocused(false);setSidebarHovered(false);} }}
           >
             <SidebarSimpleIcon
-              weight={sidebarPinned ? "fill" : "regular"}
+              weight={sidebarPinned ? "fill" : "bold"}
               aria-hidden
             />
           </button>
         </div>
-        <div className="product-label sidebar-copy">CONNECT · MVP</div>
+        <div className="product-label sidebar-copy">INTELIGÊNCIA COMERCIAL</div>
         <nav aria-label="Navegação principal">
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
@@ -110,12 +133,12 @@ function App() {
           >
             <FlaskIcon aria-hidden />
             <span className="nav-copy">Laboratório CRM</span>
-            <small className="nav-meta">M4</small>
+            <small className="nav-meta">TESTE</small>
           </NavLink>
           <span className="nav-item future" title="Command Center">
             <GaugeIcon aria-hidden />
             <span className="nav-copy">Command Center</span>
-            <small className="nav-meta">M6</small>
+            <small className="nav-meta">Em breve</small>
           </span>
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
@@ -124,12 +147,12 @@ function App() {
           >
             <CirclesFourIcon aria-hidden />
             <span className="nav-copy">Radar ARES</span>
-            <small className="nav-meta">ATIVO</small>
+            {overdueCount > 0 ? <small className="nav-meta nav-count" aria-label={`${overdueCount} SLAs vencidos`}>{overdueCount}</small> : null}
           </NavLink>
           <span className="nav-item future" title="Impacto ARES">
             <ChartLineUpIcon aria-hidden />
             <span className="nav-copy">Impacto ARES</span>
-            <small className="nav-meta">M6</small>
+            <small className="nav-meta">Em breve</small>
           </span>
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
@@ -138,7 +161,7 @@ function App() {
           >
             <ShieldCheckIcon aria-hidden />
             <span className="nav-copy">Aprovações</span>
-            <small className="nav-meta">ATIVO</small>
+            {approvals.data?.total ? <small className="nav-meta nav-count">{approvals.data.total}</small> : null}
           </NavLink>
         </nav>
         <div className="sidebar-foot">
@@ -151,6 +174,10 @@ function App() {
       </aside>
       <div className="app-content">
         <div className="topbar">
+          <button className="mobile-menu" type="button" aria-label="Abrir menu" aria-expanded={sidebarExpanded} onClick={()=>setSidebarPinned(true)}><ListIcon aria-hidden /></button>
+          <span>Serra Metais Distribuidora</span>
+          <span className="topbar-separator" />
+          <strong>{session.user.email}</strong>
           <button
             className="theme-toggle"
             type="button"
@@ -166,9 +193,6 @@ function App() {
               <MoonIcon aria-hidden />
             )}
           </button>
-          <span>Serra Metais Distribuidora</span>
-          <span className="topbar-separator" />
-          <strong>{session.user.email}</strong>
           <button
             className="sign-out"
             type="button"

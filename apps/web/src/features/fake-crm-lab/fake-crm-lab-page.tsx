@@ -16,6 +16,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { safeSum } from "@/lib/numbers";
+import { money } from "@/features/opportunities/format";
+import { Freshness } from "@/components/live/freshness";
 import {
   Table,
   TableBody,
@@ -36,15 +39,6 @@ import {
 } from "./api";
 import type { FakeCRMDeal, FakeCRMFaultResult } from "./types";
 
-const currency = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-  maximumFractionDigits: 0,
-});
-const timestamp = new Intl.DateTimeFormat("pt-BR", {
-  dateStyle: "short",
-  timeStyle: "short",
-});
 const scenarioLabels: Record<string, string> = {
   follow_up_overdue: "Follow-up vencido",
   proposal_stalled: "Proposta parada",
@@ -124,7 +118,7 @@ function stageSummary(deals: FakeCRMDeal[], stages: string[]) {
     return {
       stage,
       count: matches.length,
-      value: matches.reduce((total, deal) => total + deal.value, 0),
+      ...safeSum(matches, "value"),
     };
   });
 }
@@ -233,7 +227,7 @@ export function FakeCRMLabPage() {
     <main className="workspace fake-lab-page">
       <header className="page-header fake-lab-header">
         <div>
-          <span className="eyebrow">M4 · Integração controlada</span>
+          <span className="eyebrow">ARES CONNECT / INTEGRAÇÃO CONTROLADA</span>
           <h1>Laboratório FakeCRM</h1>
           <p>
             Bancada visual para exercitar o contrato do ARES Connect com dados
@@ -267,7 +261,7 @@ export function FakeCRMLabPage() {
 
       {snapshotQuery.isLoading ? (
         <LabSkeleton />
-      ) : snapshotQuery.isError || !snapshot ? (
+      ) : !snapshot ? (
         <section className="panel lab-unavailable" role="alert">
           <WarningCircleIcon size={30} weight="fill" aria-hidden />
           <div>
@@ -315,7 +309,7 @@ export function FakeCRMLabPage() {
             <div>
               <span>Frescor</span>
               <strong className="tabular">
-                {timestamp.format(new Date(snapshot.freshness_at))}
+                <Freshness timestamp={snapshotQuery.dataUpdatedAt} />
               </strong>
               <small>{snapshot.source}</small>
             </div>
@@ -346,7 +340,8 @@ export function FakeCRMLabPage() {
                   </strong>
                   <b className="tabular">{item.count} negócios</b>
                   <small className="tabular">
-                    {currency.format(item.value)}
+                    {item.valid ? money(item.total) : "Valor não informado"}
+                    {item.partial ? ` · ${item.missing} valores ausentes` : ""}
                   </small>
                 </div>
               ))}
@@ -440,7 +435,7 @@ export function FakeCRMLabPage() {
                         </TableCell>
                         <TableCell>{deal.stage}</TableCell>
                         <TableCell className="tabular">
-                          {currency.format(deal.value)}
+                          {money(deal.value)}
                         </TableCell>
                         <TableCell>
                           <code>v{deal.version}</code>

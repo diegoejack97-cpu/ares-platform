@@ -11,6 +11,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { Freshness } from "@/components/live/freshness";
+import { SlaCountdown } from "@/components/live/sla-countdown";
+import { finiteNumber } from "@/lib/numbers";
 import { RecommendationCard } from "@/features/decisions/recommendation-card";
 
 import {
@@ -19,7 +22,7 @@ import {
   getOpportunity,
   getOpportunityContext,
 } from "./api";
-import { dateTime, money, signalLabels, slaLabel } from "./format";
+import { dateTime, money, signalLabels } from "./format";
 import { ScoreBar } from "./score-bar";
 
 export function OpportunityDetailPage() {
@@ -65,7 +68,7 @@ export function OpportunityDetailPage() {
         </div>
       </main>
     );
-  if (detail.isError || !detail.data)
+  if (!detail.data)
     return (
       <main className="workspace">
         <div className="empty-state">
@@ -74,6 +77,7 @@ export function OpportunityDetailPage() {
             {detail.error?.message ?? "O recurso não existe neste tenant."}
           </span>
           <Link to="/radar">Voltar ao Radar</Link>
+          <Button variant="outline" onClick={() => void detail.refetch()}>Tentar novamente</Button>
         </div>
       </main>
     );
@@ -84,6 +88,7 @@ export function OpportunityDetailPage() {
       <Link className="back-link" to="/radar">
         <ArrowLeftIcon aria-hidden /> Voltar ao Radar
       </Link>
+      {detail.isError ? <div className="route-status" role="alert">A leitura não pôde ser atualizada. Exibindo o último contexto recebido.<Button onClick={() => void detail.refetch()}>Tentar novamente</Button></div> : null}
       <header className="detail-header">
         <div>
           <span className="eyebrow">
@@ -94,6 +99,7 @@ export function OpportunityDetailPage() {
             {opportunity.external_stage ?? "Sem estágio"} · aberta em{" "}
             {dateTime(opportunity.opened_at)}
           </p>
+          <Freshness timestamp={detail.dataUpdatedAt} />
         </div>
         <div className="detail-score">
           <span>Score explicável</span>
@@ -109,11 +115,11 @@ export function OpportunityDetailPage() {
         <div>
           <span>Valor do negócio</span>
           <strong>{money(opportunity.deal_value, opportunity.currency)}</strong>
-          <small>sale_value ainda não observado</small>
+          <small>Valor observado no CRM</small>
         </div>
         <div>
           <span>SLA</span>
-          <strong>{slaLabel(opportunity.sla_at)}</strong>
+          <strong><SlaCountdown timestamp={opportunity.sla_at} /></strong>
           <small>{dateTime(opportunity.sla_at)}</small>
         </div>
         <div>
@@ -215,8 +221,8 @@ export function OpportunityDetailPage() {
                   <div key={key}>
                     <dt>{key.replaceAll("_", " ")}</dt>
                     <dd>
-                      <strong>{Math.round(part.value * 100)}</strong>
-                      <small>peso {Math.round(part.weight * 100)}%</small>
+                      <strong>{finiteNumber(part.value) === null ? "Não informado" : Math.round(part.value * 100)}</strong>
+                      <small>peso {finiteNumber(part.weight) === null ? "não informado" : `${Math.round(part.weight * 100)}%`}</small>
                     </dd>
                   </div>
                 ),
@@ -227,8 +233,8 @@ export function OpportunityDetailPage() {
           <section className="panel detail-section context-card">
             <div className="panel-heading">
               <div>
-                <h2>Context snapshot</h2>
-                <p>Memória episódica por SQL</p>
+                <h2>Contexto da oportunidade</h2>
+                <p>Memória e referências que sustentam a análise</p>
               </div>
             </div>
             {context.isLoading ? (
@@ -293,7 +299,7 @@ export function OpportunityDetailPage() {
               />
             ) : (
               <div className="recommendation-empty">
-                <span>M3 · Próxima melhor ação</span>
+                <span>PRÓXIMA MELHOR AÇÃO</span>
                 <h2>Recomendação ainda não gerada</h2>
                 <p>
                   O ARES usa o snapshot auditável. Sem chave OpenAI, degrada
@@ -311,14 +317,6 @@ export function OpportunityDetailPage() {
             )}
           </section>
 
-          <section className="legacy-recommendation-empty">
-            <span>M3 · Decisão e ação</span>
-            <h2>Recomendação ainda não gerada</h2>
-            <p>
-              Esta seção está intencionalmente vazia na M2. Agentes, política,
-              aprovação e execução entram na próxima sprint.
-            </p>
-          </section>
         </aside>
       </section>
     </main>

@@ -77,8 +77,8 @@ test("renders intelligence context and reveals the priority queue in batches of 
   expect(screen.getByText(/não afirma causalidade/i)).toBeInTheDocument();
   expect(screen.getAllByLabelText("Score 92 de 100")).toHaveLength(5);
   expect(
-    screen.getByText("ARES Core / Supabase local", { exact: false }),
-  ).toBeInTheDocument();
+    screen.getAllByText("ARES Core / Supabase local", { exact: false }).length,
+  ).toBeGreaterThan(0);
   expect(screen.getByText("Exibindo 5 de 7 oportunidades")).toBeInTheDocument();
   expect(screen.queryByText("Oportunidade 6")).not.toBeInTheDocument();
 

@@ -11,6 +11,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Freshness } from "@/components/live/freshness";
+import { LiveValue } from "@/components/live/live-value";
 import {
   Table,
   TableBody,
@@ -46,15 +48,12 @@ export function EventJournalPage() {
   });
 
   const events = eventsQuery.data?.items ?? [];
-  const freshness = eventsQuery.data
-    ? formatter.format(new Date(eventsQuery.data.freshness_at))
-    : "aguardando API";
 
   return (
     <main className="workspace">
       <header className="page-header">
         <div>
-          <span className="eyebrow">M1 · Espinha dorsal</span>
+          <span className="eyebrow">ARES CONNECT / RASTREABILIDADE</span>
           <h1>Event Journal</h1>
           <p>
             Prova da entrada idempotente: webhook FakeCRM, envelope canônico e
@@ -82,7 +81,7 @@ export function EventJournalPage() {
         </div>
         <div>
           <span>Eventos persistidos</span>
-          <strong className="tabular">{eventsQuery.data?.total ?? 0}</strong>
+          <strong className="tabular"><LiveValue value={eventsQuery.data?.total ?? 0} /></strong>
         </div>
         <div>
           <span>Idempotência</span>
@@ -92,7 +91,7 @@ export function EventJournalPage() {
         </div>
         <div>
           <span>Frescor</span>
-          <strong className="tabular">{freshness}</strong>
+          <Freshness timestamp={eventsQuery.dataUpdatedAt} />
         </div>
       </section>
 
@@ -105,27 +104,16 @@ export function EventJournalPage() {
       )}
 
       <div className="content-grid">
-        <section className="panel chart-panel" aria-labelledby="activity-title">
-          <div className="panel-heading">
-            <div>
-              <h2 id="activity-title">Entrada acumulada</h2>
-              <p>Unidade: eventos · recorte: banco local</p>
-            </div>
-            <Badge variant="outline">Fonte: FakeCRM</Badge>
-          </div>
+        <section aria-label="Análise de entrada de eventos">
           {eventsQuery.isLoading ? (
             <Skeleton className="h-[250px] w-full rounded-none" />
           ) : (
             <Suspense
               fallback={<Skeleton className="h-[250px] w-full rounded-none" />}
             >
-              <EventActivityChart events={events} />
+              <EventActivityChart events={events} freshness={eventsQuery.dataUpdatedAt} state={eventsQuery.isError ? "error" : "ready"} onRetry={() => void eventsQuery.refetch()} />
             </Suspense>
           )}
-          <p className="provenance">
-            Frescor {freshness}. Série operacional; não representa receita ou
-            impacto.
-          </p>
         </section>
 
         <aside
@@ -183,7 +171,7 @@ export function EventJournalPage() {
             <Skeleton className="h-10 w-full rounded-none" />
             <Skeleton className="h-10 w-full rounded-none" />
           </div>
-        ) : eventsQuery.isError ? (
+        ) : eventsQuery.isError && !eventsQuery.data ? (
           <div className="empty-state" role="alert">
             <WarningCircleIcon size={28} weight="fill" aria-hidden />
             <strong>API indisponível</strong>

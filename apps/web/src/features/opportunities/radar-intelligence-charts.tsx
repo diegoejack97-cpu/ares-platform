@@ -1,379 +1,508 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart, PieChart } from "echarts/charts";
+import { useMemo, useState } from "react";
+import type { EChartsCoreOption } from "echarts/core";
+
+import { AresChart } from "@/charts/AresChart";
 import {
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-} from "echarts/components";
+  ChartDataTable,
+  ChartFrame,
+  ChartLegend,
+  type ChartDatum,
+  type ChartMetadata,
+} from "@/charts/ChartFrame";
 import {
-  init,
-  use as registerECharts,
-  type EChartsCoreOption,
-} from "echarts/core";
-import { SVGRenderer } from "echarts/renderers";
+  aresTooltip,
+  bevelFill,
+  categoryAxis,
+  categoryColor,
+  raisedBar,
+  useThemeTokens,
+  valueAxis,
+} from "@/charts/aresTheme";
+import { LiveValue } from "@/components/live/live-value";
+import { finiteNumber, safeSum } from "@/lib/numbers";
 
 import { money, signalLabels } from "./format";
 import type { OpportunityListItem } from "./types";
 
-registerECharts([
-  BarChart,
-  PieChart,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  SVGRenderer,
-]);
-
-interface ChartDatum {
-  label: string;
-  value: number;
-  formatted?: string;
-}
-
-function useThemeRevision() {
-  const [revision, setRevision] = useState(0);
-
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setRevision((current) => current + 1),
-    );
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "data-theme"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return revision;
-}
-
-function chartTokens() {
-  const styles = getComputedStyle(document.documentElement);
-  const token = (name: string, fallback: string) =>
-    styles.getPropertyValue(name).trim() || fallback;
-  return {
-    text: token("--foreground", "#18272b"),
-    muted: token("--muted-foreground", "#66736f"),
-    line: token("--border", "#d5d8d1"),
-    surface: token("--card", "#fbfaf6"),
-    primary: token("--chart-1", "#2f6b59"),
-    amber: token("--chart-2", "#c78b39"),
-    blue: token("--chart-3", "#497789"),
-    red: token("--chart-4", "#9b5a4f"),
-    gray: token("--chart-5", "#68706a"),
-  };
-}
-
-function ChartFrame({
-  label,
-  option,
-}: {
-  label: string;
-  option: EChartsCoreOption;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const tokens = chartTokens();
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    const chart = init(ref.current, undefined, { renderer: "svg" });
-    chart.setOption({
-      animation: !reducedMotion,
-      animationDuration: 650,
-      animationDurationUpdate: 420,
-      animationEasing: "cubicOut",
-      animationEasingUpdate: "cubicOut",
-      backgroundColor: "transparent",
-      textStyle: { color: tokens.text, fontFamily: "Geist Variable" },
-      ...option,
-    });
-    const resizeObserver = new ResizeObserver(() => chart.resize());
-    resizeObserver.observe(ref.current);
-    return () => {
-      resizeObserver.disconnect();
-      chart.dispose();
-    };
-  }, [option]);
-
-  return (
-    <div
-      ref={ref}
-      className="intelligence-chart"
-      role="img"
-      aria-label={label}
-    />
-  );
-}
-
-function AccessibleData({
-  label,
-  data,
-}: {
-  label: string;
-  data: ChartDatum[];
-}) {
-  return (
-    <details className="chart-data-alternative">
-      <summary>Ver dados</summary>
-      <table>
-        <caption className="sr-only">{label}</caption>
-        <thead>
-          <tr>
-            <th>Categoria</th>
-            <th>Valor</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((item) => (
-            <tr key={item.label}>
-              <td>{item.label}</td>
-              <td className="tabular">{item.formatted ?? item.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </details>
-  );
-}
-
-function groupBy<T>(
-  items: T[],
-  keyOf: (item: T) => string,
-  valueOf: (item: T) => number,
+function groupItems(
+  items: OpportunityListItem[],
+  keyOf: (item: OpportunityListItem) => string,
 ) {
-  const values = new Map<string, number>();
+  const groups = new Map<string, OpportunityListItem[]>();
   for (const item of items) {
     const key = keyOf(item);
-    values.set(key, (values.get(key) ?? 0) + valueOf(item));
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
   }
-  return [...values.entries()].map(([label, value]) => ({ label, value }));
+  return [...groups].map(([label, values]) => ({ label, values }));
+}
+
+function validCurrency(value: string | null | undefined) {
+  return typeof value === "string" &&
+    /^[A-Z]{3}$/.test(value.trim().toUpperCase())
+    ? value.trim().toUpperCase()
+    : null;
 }
 
 export function RadarIntelligenceCharts({
   items,
   now,
-}: {
+  freshness,
+  source,
+  state = "ready",
+  onRetry,
+  partialMessage,
+}: ChartMetadata & {
   items: OpportunityListItem[];
   now: number;
 }) {
-  const themeRevision = useThemeRevision();
-  const tokens = useMemo(
-    () => ({ ...chartTokens(), revision: themeRevision }),
-    [themeRevision],
+  const tokens = useThemeTokens();
+  const [selectedCurrency, setSelectedCurrency] = useState("BRL");
+  const currencies = useMemo(
+    () =>
+      [
+        ...new Set(
+          items
+            .map((item) => validCurrency(item.currency))
+            .filter((currency): currency is string => currency !== null),
+        ),
+      ].sort(),
+    [items],
+  );
+  const currency = currencies.includes(selectedCurrency)
+    ? selectedCurrency
+    : (currencies[0] ?? "BRL");
+  const currencyItems = useMemo(
+    () => items.filter((item) => validCurrency(item.currency) === currency),
+    [items, currency],
+  );
+  const missingCurrency = items.filter(
+    (item) => validCurrency(item.currency) === null,
+  ).length;
+  const knownValues = useMemo(
+    () => safeSum(currencyItems, "deal_value"),
+    [currencyItems],
   );
   const stages = useMemo(
     () =>
-      groupBy(
-        items,
-        (item) => item.external_stage ?? "Sem estágio",
-        (item) => item.deal_value,
+      groupItems(
+        currencyItems,
+        (item) => item.external_stage?.trim() || "Sem etapa",
       )
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 6),
-    [items],
+        .map((group) => {
+          const sum = safeSum(group.values, "deal_value");
+          return {
+            label: group.label,
+            value: sum.valid > 0 ? sum.total : null,
+            detail: sum.missing
+              ? `${sum.missing} sem valor informado`
+              : undefined,
+          };
+        })
+        .sort((a, b) => (b.value ?? 0) - (a.value ?? 0)),
+    [currencyItems],
   );
   const signals = useMemo(
     () =>
-      groupBy(
+      groupItems(
         items,
         (item) =>
           signalLabels[item.primary_signal_type ?? ""] ??
           item.primary_signal_type ??
-          "Sem sinal",
-        () => 1,
+          "Sem sinal classificado",
       )
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 5),
+        .map((group) => ({ label: group.label, value: group.values.length }))
+        .sort((a, b) => b.value - a.value),
     [items],
   );
-  const sla = useMemo(() => {
-    const nextDay = now + 86_400_000;
-    const data = [
-      { label: "Vencido", value: 0 },
-      { label: "Próximas 24h", value: 0 },
-      { label: "Depois de 24h", value: 0 },
-      { label: "Sem SLA", value: 0 },
+  // Clock boundaries are real data transitions; no simulated activity is added.
+  const slaCounts = useMemo(() => {
+    const groups = [
+      {
+        label: "Vencido",
+        items: [] as OpportunityListItem[],
+        color: tokens.brasa,
+        worsening: true,
+      },
+      {
+        label: "Próximas 24h",
+        items: [] as OpportunityListItem[],
+        color: tokens.ambar,
+        worsening: true,
+      },
+      {
+        label: "Depois de 24h",
+        items: [] as OpportunityListItem[],
+        color: tokens.jade,
+      },
+      {
+        label: "Sem prazo válido",
+        items: [] as OpportunityListItem[],
+        color: tokens.aco,
+      },
     ];
     for (const item of items) {
-      if (!item.sla_at) data[3].value += 1;
-      else if (new Date(item.sla_at).getTime() < now) data[0].value += 1;
-      else if (new Date(item.sla_at).getTime() <= nextDay) data[1].value += 1;
-      else data[2].value += 1;
+      const deadline = item.sla_at ? Date.parse(item.sla_at) : Number.NaN;
+      const group = !Number.isFinite(deadline)
+        ? 3
+        : deadline <= now
+          ? 0
+          : deadline <= now + 86_400_000
+            ? 1
+            : 2;
+      groups[group].items.push(item);
     }
-    return data;
-  }, [items, now]);
+    return groups.map((group) => group.items.length);
+  }, [items, now, tokens]);
+  const [overdueCount, soonCount, laterCount, missingDeadlineCount] = slaCounts;
+  const sla = useMemo(
+    () => [
+      {
+        label: "Vencido",
+        value: overdueCount,
+        color: tokens.brasa,
+        worsening: true,
+      },
+      {
+        label: "Próximas 24h",
+        value: soonCount,
+        color: tokens.ambar,
+        worsening: true,
+      },
+      { label: "Depois de 24h", value: laterCount, color: tokens.jade },
+      {
+        label: "Sem prazo válido",
+        value: missingDeadlineCount,
+        color: tokens.aco,
+      },
+    ],
+    [overdueCount, soonCount, laterCount, missingDeadlineCount, tokens],
+  );
+  const signalRows: ChartDatum[] = signals.map((row) => ({
+    ...row,
+    color: categoryColor(row.label, tokens),
+  }));
+  const stageRows: ChartDatum[] = stages.map((row) => ({
+    ...row,
+    color: categoryColor(row.label, tokens),
+  }));
 
   const stageOption = useMemo<EChartsCoreOption>(
     () => ({
-      grid: { left: 8, right: 18, top: 16, bottom: 32, containLabel: true },
+      textStyle: { fontFamily: tokens.font, color: tokens.ink },
+      grid: { left: 34, right: 10, top: 22, bottom: 27 },
       tooltip: {
+        ...aresTooltip(tokens),
         trigger: "axis",
-        backgroundColor: tokens.surface,
-        borderColor: tokens.line,
-        textStyle: { color: tokens.text },
-        valueFormatter: (value: unknown) => money(Number(value)),
+        valueFormatter: (value: unknown) => {
+          const parsed = finiteNumber(value);
+          return parsed === null ? "Não informado" : money(parsed, currency);
+        },
       },
       xAxis: {
-        type: "category",
-        data: stages.map((item) => item.label),
+        ...categoryAxis(
+          tokens,
+          stages.map((item) => item.label),
+        ),
         axisLabel: {
-          color: tokens.muted,
+          color: tokens.ink2,
+          fontSize: 10,
           interval: 0,
-          rotate: stages.length > 4 ? 18 : 0,
+          width: 70,
+          overflow: "truncate",
         },
-        axisLine: { lineStyle: { color: tokens.line } },
-        axisTick: { show: false },
       },
       yAxis: {
-        type: "value",
+        ...valueAxis(tokens),
         axisLabel: {
-          color: tokens.muted,
-          formatter: (value: number) => `${Math.round(value / 1000)}k`,
+          color: tokens.ink2,
+          fontSize: 10,
+          formatter: (value: number) =>
+            new Intl.NumberFormat("pt-BR", {
+              notation: "compact",
+              maximumFractionDigits: 1,
+            }).format(value),
         },
-        splitLine: { lineStyle: { color: tokens.line, type: "dashed" } },
       },
       series: [
         {
+          id: "stage-value",
           type: "bar",
-          data: stages.map((item) => item.value),
-          barMaxWidth: 34,
-          itemStyle: { color: tokens.primary, borderRadius: [2, 2, 0, 0] },
+          name: `Valor observado (${currency})`,
+          barMaxWidth: 36,
+          data: stages.map((item) => ({
+            name: item.label,
+            value: item.value,
+            itemStyle: raisedBar(categoryColor(item.label, tokens), tokens),
+          })),
+          emphasis: { itemStyle: { shadowOffsetY: 4, shadowBlur: 0 } },
         },
       ],
     }),
-    [stages, tokens],
+    [stages, tokens, currency],
   );
+
   const signalOption = useMemo<EChartsCoreOption>(
     () => ({
-      color: [
-        tokens.red,
-        tokens.amber,
-        tokens.blue,
-        tokens.primary,
-        tokens.gray,
-      ],
+      textStyle: { fontFamily: tokens.font, color: tokens.ink },
       tooltip: {
+        ...aresTooltip(tokens),
         trigger: "item",
-        backgroundColor: tokens.surface,
-        borderColor: tokens.line,
-        textStyle: { color: tokens.text },
-      },
-      legend: {
-        bottom: 0,
-        left: "center",
-        textStyle: { color: tokens.muted, fontSize: 10 },
-        itemWidth: 9,
-        itemHeight: 9,
+        valueFormatter: (value: unknown) =>
+          `${finiteNumber(value) ?? 0} oportunidades`,
       },
       series: [
         {
+          id: "signal-track",
           type: "pie",
-          radius: ["45%", "70%"],
-          center: ["50%", "43%"],
-          avoidLabelOverlap: true,
+          radius: ["57%", "81%"],
+          center: ["50%", "50%"],
+          silent: true,
+          z: 1,
           label: { show: false },
-          emphasis: { scaleSize: 5 },
-          data: signals.map((item) => ({
-            name: item.label,
-            value: item.value,
+          tooltip: { show: false },
+          data: [
+            {
+              value: 1,
+              itemStyle: {
+                color: tokens.well,
+                borderColor: tokens.edgeDark,
+                borderWidth: 2,
+              },
+            },
+          ],
+          animation: false,
+        },
+        {
+          id: "signal-distribution",
+          type: "pie",
+          radius: ["57%", "81%"],
+          center: ["50%", "50%"],
+          z: 2,
+          padAngle: 1.6,
+          label: { show: false },
+          labelLine: { show: false },
+          minAngle: 2,
+          emphasis: {
+            scaleSize: 4,
+            itemStyle: { shadowOffsetY: 4, shadowBlur: 0 },
+          },
+          itemStyle: {
+            borderColor: tokens.edgeDark,
+            borderWidth: 1,
+            shadowColor: tokens.edgeDark,
+            shadowOffsetY: 2,
+            shadowBlur: 0,
+          },
+          data: signals.map((row) => ({
+            name: row.label,
+            value: row.value,
+            itemStyle: {
+              color: bevelFill(categoryColor(row.label, tokens)),
+            },
           })),
         },
       ],
     }),
     [signals, tokens],
   );
+
   const slaOption = useMemo<EChartsCoreOption>(
     () => ({
-      color: [tokens.red, tokens.amber, tokens.blue, tokens.gray],
-      grid: { left: 14, right: 14, top: 42, bottom: 26 },
+      textStyle: { fontFamily: tokens.font, color: tokens.ink },
+      grid: { left: 99, right: 28, top: 8, bottom: 20 },
       tooltip: {
+        ...aresTooltip(tokens),
         trigger: "axis",
-        backgroundColor: tokens.surface,
-        borderColor: tokens.line,
-        textStyle: { color: tokens.text },
-      },
-      legend: {
-        top: 4,
-        textStyle: { color: tokens.muted, fontSize: 10 },
-        itemWidth: 10,
-        itemHeight: 10,
+        axisPointer: { type: "shadow" },
       },
       xAxis: {
-        type: "value",
-        minInterval: 1,
-        axisLabel: { color: tokens.muted },
-        splitLine: { lineStyle: { color: tokens.line, type: "dashed" } },
+        ...valueAxis(tokens),
+        max: Math.max(items.length, 1),
+        splitNumber: 3,
       },
       yAxis: {
-        type: "category",
-        data: ["Fila atual"],
-        axisLabel: { color: tokens.muted },
+        ...categoryAxis(
+          tokens,
+          sla.map((item) => item.label),
+        ),
+        inverse: true,
         axisLine: { show: false },
-        axisTick: { show: false },
+        axisLabel: { color: tokens.ink2, fontSize: 10 },
       },
-      series: sla.map((item) => ({
-        name: item.label,
-        type: "bar",
-        stack: "sla",
-        data: [item.value],
-        barWidth: 28,
-      })),
+      series: [
+        {
+          id: "sla-window",
+          name: "Oportunidades",
+          type: "bar",
+          barWidth: 15,
+          showBackground: true,
+          backgroundStyle: {
+            color: tokens.well,
+            borderColor: tokens.edgeDark,
+            borderWidth: 1,
+            borderRadius: tokens.radius,
+          },
+          label: {
+            show: true,
+            position: "right",
+            color: tokens.ink,
+            fontSize: 11,
+            fontWeight: 650,
+          },
+          data: sla.map((item) => ({
+            name: item.label,
+            value: item.value,
+            itemStyle: {
+              ...raisedBar(item.color, tokens),
+              borderRadius: tokens.radius,
+            },
+          })),
+          emphasis: { itemStyle: { shadowOffsetY: 3, shadowBlur: 0 } },
+        },
+      ],
     }),
-    [sla, tokens],
+    [sla, tokens, items.length],
   );
 
-  const stageData = stages.map((item) => ({
-    ...item,
-    formatted: money(item.value),
-  }));
+  const stagePartial = knownValues.partial || missingCurrency > 0;
+  const stageState =
+    state === "error" || state === "loading" || state === "stale"
+      ? state
+      : stagePartial || state === "partial"
+        ? "partial"
+        : items.length === 0
+          ? "empty"
+          : "ready";
+  const valueWarning = [
+    knownValues.missing
+      ? `${knownValues.missing} registro(s) em ${currency} sem valor informado.`
+      : "",
+    missingCurrency ? `${missingCurrency} sem moeda válida.` : "",
+    stagePartial
+      ? "Total conhecido; exposição pode estar subestimada."
+      : partialMessage,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const metadata = {
+    freshness,
+    source,
+    state: items.length === 0 && state === "ready" ? ("empty" as const) : state,
+    onRetry,
+    partialMessage,
+  };
 
   return (
     <section className="radar-intelligence-grid" aria-label="Análises do Radar">
-      <article className="panel intelligence-panel intelligence-panel-wide">
-        <div className="panel-heading">
-          <div>
-            <span className="analysis-kicker">EXPOSIÇÃO COMERCIAL</span>
-            <h2>Valor observado por etapa</h2>
-            <p>Onde o valor em risco está concentrado agora</p>
-          </div>
-        </div>
-        <ChartFrame
-          label="Valor observado por etapa do funil"
+      <ChartFrame
+        {...metadata}
+        className="chart-stage"
+        title="Exposição por etapa"
+        definition="Onde se concentra o valor observado do recorte"
+        unit={`Valor observado · ${currency}`}
+        period="Fila no recorte atual"
+        attribution="Observação; causalidade não demonstrada"
+        state={stageState}
+        partialMessage={valueWarning}
+        hasData={knownValues.valid > 0}
+        emptyMessage={
+          items.length
+            ? "Os negócios deste recorte ainda não possuem valores válidos nesta moeda."
+            : "As etapas aparecem quando as oportunidades entram no Radar."
+        }
+        actions={
+          currencies.length > 1 ? (
+            <select
+              className="well"
+              aria-label="Moeda da análise de exposição"
+              value={currency}
+              onChange={(event) => setSelectedCurrency(event.target.value)}
+            >
+              {currencies.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          ) : undefined
+        }
+        table={
+          <ChartDataTable
+            title="Exposição por etapa"
+            rows={stageRows}
+            unit={currency}
+            format={(value) => money(value, currency)}
+          />
+        }
+      >
+        <AresChart
           option={stageOption}
+          label={`Valor observado por etapa, em ${currency}`}
+          physicalAxis
         />
-        <AccessibleData label="Valor observado por etapa" data={stageData} />
-      </article>
-      <article className="panel intelligence-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="analysis-kicker">CAUSA OPERACIONAL</span>
-            <h2>Sinais dominantes</h2>
-            <p>Composição atual, não causalidade</p>
-          </div>
-        </div>
-        <ChartFrame
-          label="Distribuição dos sinais dominantes"
-          option={signalOption}
+        <ChartLegend
+          rows={stageRows}
+          format={(value) => money(value, currency)}
+          compact
         />
-        <AccessibleData label="Sinais dominantes" data={signals} />
-      </article>
-      <article className="panel intelligence-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="analysis-kicker">PRESSÃO DE TEMPO</span>
-            <h2>Janela de SLA</h2>
-            <p>Vencido, próximas 24h e demais prazos</p>
+      </ChartFrame>
+      <ChartFrame
+        {...metadata}
+        className="chart-signals"
+        title="Sinais dominantes"
+        definition="O motivo principal de atenção em cada oportunidade"
+        unit="Oportunidades"
+        period="Fila no recorte atual"
+        attribution="Sinal observado; sem causalidade"
+        hasData={items.length > 0}
+        table={
+          <ChartDataTable
+            title="Sinais dominantes"
+            rows={signalRows}
+            unit="Oportunidades"
+          />
+        }
+      >
+        <div className="chart-donut-layout">
+          <div className="chart-donut-plot">
+            <AresChart
+              option={signalOption}
+              label="Composição das oportunidades por sinal dominante"
+            />
+            <div className="chart-donut-center">
+              <strong>
+                <LiveValue value={items.length} />
+              </strong>
+              <span>oportunidades</span>
+            </div>
           </div>
+          <ChartLegend rows={signalRows} />
         </div>
-        <ChartFrame
-          label="Distribuição das oportunidades por janela de SLA"
+      </ChartFrame>
+      <ChartFrame
+        {...metadata}
+        className="chart-sla"
+        title="Janela de SLA"
+        definition="Prazos que exigem resposta e cobertura de atendimento"
+        unit="Oportunidades"
+        period="Agora / próximas 24 horas"
+        hasData={items.length > 0}
+        table={
+          <ChartDataTable
+            title="Janela de SLA"
+            rows={sla}
+            unit="Oportunidades"
+          />
+        }
+      >
+        <AresChart
           option={slaOption}
+          label="Oportunidades com SLA vencido, próximas 24h, após 24h e sem prazo válido"
         />
-        <AccessibleData label="Janela de SLA" data={sla} />
-      </article>
+        <ChartLegend rows={sla} compact />
+      </ChartFrame>
     </section>
   );
 }
