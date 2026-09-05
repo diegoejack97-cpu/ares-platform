@@ -18,22 +18,70 @@ export function RiskDistributionChart({
       const counts = [0, 1, 2, 3].map(
         (priority) => items.filter((item) => item.priority === priority).length,
       );
-      chart.setOption({
-        animation: false,
-        grid: { left: 30, right: 16, top: 8, bottom: 28 },
-        xAxis: {
-          type: "category",
-          data: ["Crítica", "Alta", "Média", "Baixa"],
-        },
-        yAxis: { type: "value", minInterval: 1 },
-        series: [{ type: "bar", data: counts, barWidth: 24 }],
-        color: ["#2f6b59"],
-        tooltip: { trigger: "axis" },
+      const render = () => {
+        const styles = getComputedStyle(document.documentElement);
+        const token = (name: string, fallback: string) =>
+          styles.getPropertyValue(name).trim() || fallback;
+        const reducedMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+        chart.setOption(
+          {
+            animation: !reducedMotion,
+            animationDuration: 620,
+            animationDurationUpdate: 380,
+            grid: { left: 30, right: 16, top: 8, bottom: 28 },
+            textStyle: { color: token("--foreground", "#18272b") },
+            xAxis: {
+              type: "category",
+              data: ["Crítica", "Alta", "Média", "Baixa"],
+              axisLabel: { color: token("--muted-foreground", "#66736f") },
+              axisLine: {
+                lineStyle: { color: token("--border", "#d5d8d1") },
+              },
+              axisTick: { show: false },
+            },
+            yAxis: {
+              type: "value",
+              minInterval: 1,
+              axisLabel: { color: token("--muted-foreground", "#66736f") },
+              splitLine: {
+                lineStyle: {
+                  color: token("--border", "#d5d8d1"),
+                  type: "dashed",
+                },
+              },
+            },
+            series: [
+              {
+                type: "bar",
+                data: counts,
+                barWidth: 24,
+                itemStyle: { borderRadius: [2, 2, 0, 0] },
+              },
+            ],
+            color: [token("--chart-1", "#2f6b59")],
+            tooltip: {
+              trigger: "axis",
+              backgroundColor: token("--card", "#fbfaf6"),
+              borderColor: token("--border", "#d5d8d1"),
+              textStyle: { color: token("--foreground", "#18272b") },
+            },
+          },
+          { notMerge: true },
+        );
+      };
+      render();
+      const resizeObserver = new ResizeObserver(() => chart.resize());
+      resizeObserver.observe(ref.current);
+      const themeObserver = new MutationObserver(render);
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "data-theme"],
       });
-      const resize = () => chart.resize();
-      window.addEventListener("resize", resize);
       cleanup = () => {
-        window.removeEventListener("resize", resize);
+        resizeObserver.disconnect();
+        themeObserver.disconnect();
         chart.dispose();
       };
     });
