@@ -76,7 +76,7 @@ Na Policy M3, `add_note` é a única ação de baixo risco com `allow` e segue p
 Para incluir o teste de integração PostgreSQL no pytest:
 
 ```powershell
-$env:ARES_TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+$env:ARES_TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55422/postgres"
 python -m pytest backend/tests
 ```
 

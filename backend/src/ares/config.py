@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     fake_crm_timeout_seconds: float = 2.0
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
     event_journal_backend: Literal["postgres", "memory"] = "postgres"
-    database_url: str = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+    database_url: str = "postgresql://postgres:postgres@127.0.0.1:55422/postgres"
     tenant_id: UUID = UUID("20000000-0000-0000-0000-000000000001")
-    supabase_url: str = "http://127.0.0.1:54321"
+    supabase_url: str = "http://127.0.0.1:55421"
     supabase_publishable_key: str = ""
     supabase_secret_key: SecretStr = SecretStr("")
     tick_secret: SecretStr = SecretStr("local-dev-tick-secret")
