@@ -13,6 +13,7 @@
     "test:e2e:m1": "node scripts/verify-m1.cjs",
     "test:e2e:m2": "node scripts/verify-m2.cjs",
     "test:e2e:m3": "node scripts/verify-m3.cjs",
+    "test:e2e:live": "node scripts/verify-live-data.cjs",
     "preview": "vite preview"
   },
   "dependencies": {

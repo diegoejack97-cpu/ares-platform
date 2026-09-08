@@ -5,6 +5,7 @@
 @import "./styles/tokens.css";
 @import "./styles/legacy-layout.css";
 @import "./styles/material.css";
+@import "./styles/observatory.css";
 
 @custom-variant dark (&:is(.dark *));
 

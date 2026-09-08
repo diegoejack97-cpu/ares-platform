@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { expect, test, vi } from "vitest";
@@ -72,10 +72,18 @@ test("renders intelligence context and reveals the priority queue in batches of 
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("Expansão Serra Metais")).toBeInTheDocument();
-  expect(screen.getAllByText("Follow-up vencido").length).toBeGreaterThan(0);
-  expect(screen.getByText(/não afirma causalidade/i)).toBeInTheDocument();
-  expect(screen.getAllByLabelText("Score 92 de 100")).toHaveLength(5);
+  expect(
+    await screen.findByRole("heading", { name: "Expansão Serra Metais" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "Analisar oportunidade" }),
+  ).toHaveAttribute("href", "/opportunities/op-1");
+  expect(screen.getAllByText(/Follow-up vencido/).length).toBeGreaterThan(0);
+  expect(screen.getByText("Observação ≠ causalidade")).toBeInTheDocument();
+  const queue = within(
+    screen.getByRole("region", { name: "Fila de oportunidades com rolagem" }),
+  );
+  expect(queue.getAllByLabelText("Score 92 de 100")).toHaveLength(5);
   expect(
     screen.getAllByText("ARES Core / Supabase local", { exact: false }).length,
   ).toBeGreaterThan(0);

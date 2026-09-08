@@ -10,7 +10,6 @@ import {
 import {
   areaFill,
   aresTooltip,
-  categoryAxis,
   useThemeTokens,
   valueAxis,
 } from "@/charts/aresTheme";
@@ -68,13 +67,16 @@ export function EventActivityChart({
         },
       },
       xAxis: {
-        ...categoryAxis(
-          tokens,
-          validEvents.map((event) =>
-            timeFormatter.format(new Date(event.recorded_at)),
-          ),
-        ),
-        boundaryGap: false,
+        type: "time",
+        splitNumber: 3,
+        axisLine: { lineStyle: { color: tokens.edgeDark, width: 2 } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: tokens.ink2,
+          fontSize: 11,
+          hideOverlap: true,
+          formatter: (value: number) => timeFormatter.format(new Date(value)),
+        },
       },
       yAxis: valueAxis(tokens),
       series: [
@@ -87,7 +89,7 @@ export function EventActivityChart({
           symbolSize: 7,
           data: validEvents.map((event, index) => ({
             name: event.id,
-            value: index + 1,
+            value: [Date.parse(event.recorded_at), index + 1],
           })),
           lineStyle: {
             color: tokens.jade,

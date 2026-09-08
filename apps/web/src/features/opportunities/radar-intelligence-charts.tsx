@@ -118,30 +118,7 @@ export function RadarIntelligenceCharts({
   );
   // Clock boundaries are real data transitions; no simulated activity is added.
   const slaCounts = useMemo(() => {
-    const groups = [
-      {
-        label: "Vencido",
-        items: [] as OpportunityListItem[],
-        color: tokens.brasa,
-        worsening: true,
-      },
-      {
-        label: "Próximas 24h",
-        items: [] as OpportunityListItem[],
-        color: tokens.ambar,
-        worsening: true,
-      },
-      {
-        label: "Depois de 24h",
-        items: [] as OpportunityListItem[],
-        color: tokens.jade,
-      },
-      {
-        label: "Sem prazo válido",
-        items: [] as OpportunityListItem[],
-        color: tokens.aco,
-      },
-    ];
+    const counts = [0, 0, 0, 0];
     for (const item of items) {
       const deadline = item.sla_at ? Date.parse(item.sla_at) : Number.NaN;
       const group = !Number.isFinite(deadline)
@@ -151,10 +128,10 @@ export function RadarIntelligenceCharts({
           : deadline <= now + 86_400_000
             ? 1
             : 2;
-      groups[group].items.push(item);
+      counts[group] += 1;
     }
-    return groups.map((group) => group.items.length);
-  }, [items, now, tokens]);
+    return counts;
+  }, [items, now]);
   const [overdueCount, soonCount, laterCount, missingDeadlineCount] = slaCounts;
   const sla = useMemo(
     () => [
@@ -211,6 +188,7 @@ export function RadarIntelligenceCharts({
           interval: 0,
           width: 70,
           overflow: "truncate",
+          hideOverlap: true,
         },
       },
       yAxis: {
@@ -329,7 +307,12 @@ export function RadarIntelligenceCharts({
         ),
         inverse: true,
         axisLine: { show: false },
-        axisLabel: { color: tokens.ink2, fontSize: 10 },
+        axisLabel: {
+          color: tokens.ink2,
+          fontSize: 11,
+          width: 91,
+          overflow: "truncate",
+        },
       },
       series: [
         {
@@ -381,7 +364,7 @@ export function RadarIntelligenceCharts({
       : "",
     missingCurrency ? `${missingCurrency} sem moeda válida.` : "",
     stagePartial
-      ? "Total conhecido; exposição pode estar subestimada."
+      ? "Total parcial; valor completo indisponível."
       : partialMessage,
   ]
     .filter(Boolean)

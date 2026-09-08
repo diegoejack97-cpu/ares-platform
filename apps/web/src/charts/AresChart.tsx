@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { BarChart, LineChart, PieChart } from "echarts/charts";
 import {
   GraphicComponent,
@@ -25,7 +25,7 @@ registerECharts([
   SVGRenderer,
 ]);
 
-export function AresChart({
+export const AresChart = memo(function AresChart({
   option,
   label,
   className = "",
@@ -64,7 +64,6 @@ export function AresChart({
         { notMerge: false, replaceMerge: ["series"], lazyUpdate: true },
       );
     };
-    render();
     motion.addEventListener("change", render);
     const resize = new ResizeObserver(() => chart.resize());
     resize.observe(host);
@@ -80,9 +79,9 @@ export function AresChart({
     optionRef.current = option;
     const chart = chartRef.current;
     if (!chart) return;
-    registerAresTheme(readThemeTokens());
     const nextTheme = document.documentElement.dataset.theme;
     if (themeRef.current !== nextTheme) {
+      registerAresTheme(readThemeTokens());
       chart.setTheme("ares", { silent: true });
       themeRef.current = nextTheme;
     }
@@ -111,4 +110,4 @@ export function AresChart({
       aria-label={label}
     />
   );
-}
+});

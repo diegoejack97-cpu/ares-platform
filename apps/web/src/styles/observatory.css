@@ -1,0 +1,455 @@
+/* ARES Observatory: cut metal planes, offset edges and quiet instrument wells. */
+:root {
+  --bg: #141a1c;
+  --well: #101517;
+  --panel: #20282b;
+  --raised: #293337;
+  --raised-hi: #333f43;
+  --edge: #435053;
+  --edge-hi: #536366;
+  --edge-dark: #090e10;
+  --ink: #f3efe4;
+  --ink-2: #c3cbc8;
+  --ink-3: #a3b1ae;
+  --brasa: #df8657;
+  --brasa-ink: #f0ac7e;
+  --brasa-lo: #493024;
+  --aco: #849eaa;
+  --lilas: #bc9788;
+  --jade: #68a794;
+  --jade-ink: #94c6b4;
+  --r-lg: 12px;
+  --r-md: 6px;
+  --r-sm: 4px;
+  --rail-w: 76px;
+  --rail-w-open: 260px;
+  --e-1:
+    inset 0 1px 0 var(--edge-hi), 0 3px 0 var(--edge-dark),
+    0 10px 22px -16px #000000b3;
+  --e-2:
+    inset 0 1px 0 var(--edge-hi), 0 3px 0 var(--edge-dark),
+    0 12px 22px -14px #000000b3;
+  --e-3:
+    inset 0 1px 0 var(--edge-hi), 0 5px 0 var(--edge-dark),
+    0 20px 30px -16px #000000cc;
+  --hero: #e8e2d4;
+  --hero-ink: #20292a;
+  --hero-muted: #465957;
+  --hero-edge: #fff9e8;
+  --hero-accent: #aa4b24;
+  --hero-well: #d6cebd;
+  --hero-shadow: #77776b;
+}
+:root[data-theme="light"] {
+  --bg: #e8e9e2;
+  --well: #dde2dc;
+  --panel: #f5f6f0;
+  --raised: #fdfdf7;
+  --raised-hi: #ffffff;
+  --edge: #bac5bb;
+  --edge-hi: #ffffff;
+  --edge-dark: #a0afa5;
+  --ink: #20312e;
+  --ink-2: #435b53;
+  --ink-3: #50675e;
+  --brasa: #ad4925;
+  --brasa-ink: #9f3d1c;
+  --brasa-lo: #f5ded0;
+  --aco: #56778a;
+  --lilas: #98715e;
+  --jade: #38765f;
+  --jade-ink: #26624e;
+  --e-1:
+    inset 0 1px 0 var(--edge-hi), 0 3px 0 var(--edge-dark),
+    0 9px 20px -15px #283b3352;
+  --e-2:
+    inset 0 1px 0 var(--edge-hi), 0 3px 0 var(--edge-dark),
+    0 12px 24px -15px #283b3360;
+  --e-3:
+    inset 0 1px 0 var(--edge-hi), 0 5px 0 var(--edge-dark),
+    0 20px 30px -18px #283b3370;
+  --hero: #263734;
+  --hero-ink: #f2efdf;
+  --hero-muted: #c0cec1;
+  --hero-edge: #526a5d;
+  --hero-accent: #f0b387;
+  --hero-well: #1c2b28;
+  --hero-shadow: #0b1915;
+}
+body {
+  background: var(--bg);
+}
+.app-shell .app-content {
+  min-width: 0;
+}
+.workspace .content-grid > *,
+.workspace .detail-grid > *,
+.workspace .status-rail > div {
+  min-width: 0;
+}
+.app-shell .sidebar {
+  width: var(--rail-w);
+  min-width: 0;
+  height: 100dvh;
+  background: var(--well);
+  border-right: 1px solid var(--edge);
+  box-shadow: inset -4px 0 0 var(--panel);
+  padding: 0 10px;
+}
+.app-shell .sidebar[data-expanded="true"] {
+  width: var(--rail-w-open);
+  box-shadow:
+    8px 0 0 var(--edge-dark),
+    20px 0 40px -20px #00000066;
+}
+.app-shell .brand {
+  height: 84px;
+  padding: 0 4px;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.app-shell .brand-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  background: var(--raised);
+  color: var(--brasa-ink);
+  border: 1px solid var(--edge);
+  border-radius: 4px 14px 4px 4px;
+  box-shadow: var(--e-2);
+}
+.brand-mark svg {
+  width: 33px;
+  height: 33px;
+}
+.app-shell .brand strong {
+  font-size: 23px;
+  letter-spacing: 0.11em;
+  font-weight: 750;
+}
+.app-shell .brand small {
+  font-size: 8px;
+  letter-spacing: 0.33em;
+}
+.app-shell .product-label {
+  display: flex;
+  justify-content: space-between;
+  padding: 24px 14px 12px;
+  font-size: 9px;
+}
+.app-shell .nav-item {
+  height: 49px;
+  min-width: 0;
+  padding: 0 15px;
+  border-radius: 4px 10px 4px 4px;
+  font-size: 12px;
+  gap: 16px;
+}
+.app-shell .nav-item > svg {
+  width: 20px;
+  height: 20px;
+}
+.app-shell .nav-item.active {
+  background: var(--raised);
+  box-shadow: var(--e-2);
+  border: 1px solid var(--edge);
+  color: var(--ink);
+}
+.app-shell .nav-item.active::before {
+  left: -5px;
+  width: 3px;
+  top: 13px;
+  bottom: 13px;
+  border-radius: 2px;
+}
+.app-shell .nav-item.future {
+  border-top: 1px solid var(--edge);
+  margin-top: 14px;
+  border-radius: 0;
+  font-size: 11px;
+}
+.app-shell .nav-item.future + .future {
+  margin-top: 0;
+  border-top: 0;
+}
+.app-shell .sidebar-foot {
+  padding: 18px 14px;
+}
+.app-shell .sidebar-foot .environment-dot {
+  border-radius: 2px;
+}
+.app-shell .topbar {
+  display: flex;
+  min-height: 64px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--edge);
+  box-shadow: none;
+  padding-inline: 32px;
+}
+.app-shell .tenant-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 0;
+}
+.tenant-monogram {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border: 1px solid var(--edge);
+  color: var(--ink-2);
+  font-size: 9px;
+  letter-spacing: -0.03em;
+  border-radius: 5px;
+}
+.environment-label {
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  margin-right: auto;
+  border-left: 1px solid var(--edge);
+  padding-left: 14px;
+}
+.app-shell .topbar > strong {
+  font-size: 10px;
+}
+.app-shell .topbar-separator {
+  display: none;
+}
+.app-shell .theme-toggle,
+.app-shell .sign-out,
+.app-shell .mobile-menu {
+  box-shadow: none;
+  background: transparent;
+  border: 1px solid var(--edge);
+  min-height: 34px;
+  height: 34px;
+}
+.app-shell .theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+.app-shell .workspace {
+  max-width: 1680px;
+  padding: 28px 32px 46px;
+}
+.workspace .page-header {
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: 25px;
+}
+.workspace .page-header h1 {
+  font-size: clamp(30px, 2.8vw, 40px);
+  letter-spacing: -0.055em;
+  font-weight: 660;
+}
+.workspace .page-header p {
+  font-size: 12px;
+}
+.workspace .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: 0.17em;
+  color: var(--ink-3);
+}
+.workspace .eyebrow::before {
+  content: "";
+  width: 16px;
+  height: 3px;
+  background: var(--brasa);
+  transform: skewX(-30deg);
+}
+.workspace .panel,
+.workspace .chart-frame,
+.workspace .approval-card {
+  border-radius: 4px 14px 4px 4px;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  box-shadow: var(--e-1);
+}
+.workspace .panel-heading {
+  border-bottom: 1px solid var(--edge);
+  background: var(--sheen);
+}
+.workspace [data-slot="button"] {
+  border-radius: 4px 9px 4px 4px;
+  min-height: 36px;
+  font-size: 11px;
+  gap: 9px;
+  box-shadow: var(--e-1);
+}
+.workspace [data-slot="button"]:hover {
+  box-shadow: var(--e-2);
+  transform: translateY(-1px);
+}
+.workspace [data-slot="button"]:active {
+  box-shadow: var(--e-press);
+  transform: translateY(2px);
+}
+.workspace .well {
+  border-radius: 5px;
+}
+.workspace .chart-frame-header {
+  padding: 18px 20px 0;
+}
+.workspace .chart-frame-heading h2 {
+  font-size: 16px;
+  letter-spacing: -0.025em;
+}
+.workspace .chart-frame-heading h2::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 12px;
+  margin-right: 8px;
+  background: var(--brasa);
+  transform: skewY(-25deg);
+  vertical-align: -1px;
+}
+.workspace .chart-frame-heading p {
+  font-size: 10px;
+  margin-top: 7px;
+  line-height: 1.6;
+}
+.workspace .chart-frame-context {
+  padding-inline: 20px;
+}
+.workspace .chart-frame-body {
+  padding: 12px;
+}
+.workspace .chart-plot {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--edge) 12%, transparent),
+    transparent 50%
+  );
+  border: 1px solid var(--edge-dark);
+  border-bottom-color: var(--edge-hi);
+  box-shadow: inset 0 3px 7px #00000024;
+}
+.workspace .chart-frame-footer {
+  border-top: 1px solid var(--edge);
+  padding: 10px 16px 12px;
+  gap: 4px 12px;
+  font-size: 9px;
+}
+.workspace .chart-frame-footer .freshness-chip {
+  font-size: 9px;
+  background: none;
+  box-shadow: none;
+  border: 0;
+  padding: 0;
+}
+.workspace .chart-frame-footer .chart-attribution {
+  font-size: 9px;
+}
+.workspace .chart-view-toggle {
+  box-shadow: var(--e-well);
+  background: var(--well);
+  border-radius: 5px;
+  padding: 3px;
+}
+.workspace .chart-view-toggle button {
+  border-radius: 3px;
+  min-height: 28px;
+  font-size: 9px;
+  padding: 4px 6px;
+}
+.workspace .chart-view-toggle button[aria-pressed="true"] {
+  box-shadow: 0 2px 0 var(--edge-dark);
+}
+.workspace .freshness-chip {
+  font-size: 10px;
+  border-radius: 3px;
+  box-shadow: none;
+  background: transparent;
+  padding: 4px 0;
+  border: 0;
+}
+.workspace .freshness-chip i {
+  border-radius: 1px;
+}
+.workspace .live-value {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+.workspace .approval-context {
+  border-radius: 3px 13px 0 0;
+}
+.workspace .evidence-card {
+  border-radius: 4px 12px 4px 4px;
+}
+.login-brand > span svg {
+  width: 34px;
+  height: 34px;
+}
+@media (max-width: 1100px) {
+  .app-shell .workspace {
+    padding: 24px 22px 36px;
+  }
+  .app-shell .topbar {
+    padding-inline: 22px;
+  }
+  .workspace .chart-frame-header {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 700px) {
+  .workspace .content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell .workspace {
+    padding: 20px 14px 30px;
+  }
+  .app-shell .topbar {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .environment-label {
+    display: none;
+  }
+  .app-shell .tenant-name {
+    margin-right: auto;
+  }
+  .app-shell .topbar > strong {
+    display: none;
+  }
+  .workspace .page-header h1 {
+    font-size: 33px;
+  }
+}
+@media (max-width: 600px) {
+  .app-shell .mobile-menu {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+  }
+  .app-shell .mobile-menu > svg {
+    width: 18px;
+    height: 18px;
+  }
+  .app-shell .sidebar {
+    width: var(--rail-w-open);
+  }
+  .app-shell .tenant-name {
+    max-width: 175px;
+    font-size: 10px;
+  }
+  .tenant-monogram {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace [data-slot="button"]:hover {
+    transform: none;
+  }
+}

@@ -4,6 +4,7 @@ import { ArrowRightIcon, LockKeyIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
+import { AresMark } from "@/components/ares-mark";
 
 export function LoginPage() {
   const [email, setEmail] = useState("admin@ares.local");
@@ -46,7 +47,9 @@ export function LoginPage() {
       </section>
       <section className="login-card" aria-label="Entrar no ARES">
         <div className="login-brand">
-          <span>A</span>
+          <span>
+            <AresMark />
+          </span>
           <div>
             <strong>ARES</strong>
             <small>PLATFORM</small>

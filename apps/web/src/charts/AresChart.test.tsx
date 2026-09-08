@@ -61,6 +61,7 @@ describe("AresChart snapshot lifecycle", () => {
     const { rerender, unmount } = render(
       <AresChart option={first} label="Contagem" />,
     );
+    expect(chart.setOption).toHaveBeenCalledTimes(1);
     rerender(<AresChart option={next} label="Contagem" />);
     expect(init).toHaveBeenCalledTimes(1);
     expect(chart.setOption).toHaveBeenLastCalledWith(
@@ -70,6 +71,14 @@ describe("AresChart snapshot lifecycle", () => {
     expect(chart.dispose).not.toHaveBeenCalled();
     unmount();
     expect(chart.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not repaint when an unrelated parent clock ticks", () => {
+    const option = { series: [{ id: "count", type: "bar", data: [3] }] };
+    const { rerender } = render(<AresChart option={option} label="Contagem" />);
+    rerender(<AresChart option={option} label="Contagem" />);
+    expect(chart.setOption).toHaveBeenCalledTimes(1);
+    expect(init).toHaveBeenCalledTimes(1);
   });
 
   it("applies a new theme to the existing renderer", () => {

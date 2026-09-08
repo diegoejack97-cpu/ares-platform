@@ -29,6 +29,29 @@ O bootstrap cria somente no ambiente local:
 
 A senha local é exibida pelo bootstrap. Nunca reutilize essas credenciais em ambientes compartilhados.
 
+## Portas e recuperação da leitura
+
+O endereço canônico é `http://localhost:5173/radar`, com a API em
+`http://localhost:8000`. Vite usa `strictPort`: se 5173 estiver ocupada, não muda
+silenciosamente para uma origem que o CORS da API não permite. Reutilize a instância
+correta ou encerre somente o servidor duplicado. Overrides de porta devem alinhar
+`VITE_API_URL` e `ARES_CORS_ORIGINS` explicitamente; não são a configuração padrão.
+
+Se aparecer `Failed to fetch`, verifique a requisição autenticada, não apenas
+`/openapi.json`: uma resposta HTTP 500 pode aparecer no navegador como erro de CORS.
+Na ocorrência de 08/09/2026, a instância antiga da API 8000 retornava 500 e a API
+8001 retornava os 25 registros existentes. O primeiro encerramento falhou e deixou
+dois processos ouvindo em 8000. Após identificar e encerrar a árvore da instância
+antiga, a nova API 8000 restaurou a leitura, sem alteração no banco. O teste no
+navegador confirmou 25 oportunidades e atualização manual e automática com HTTP 200. Não foi isolada a exceção
+interna daquela instância antiga; não atribuir o problema a RLS ou falta de dados.
+
+Valide carregamento e atualização manual/automática, sem alterar a massa:
+
+```powershell
+npm run test:e2e:live --workspace @ares/web
+```
+
 ## FakeCRM HTTP Sandbox — fundação da M4
 
 `npm run dev` inicia frontend, API ARES e o sandbox. A documentação interativa do CRM fictício

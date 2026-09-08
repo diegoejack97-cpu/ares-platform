@@ -1,4 +1,5 @@
 import type { ScoreBreakdown } from "./types";
+import { finiteNumber } from "@/lib/numbers";
 
 export function ScoreBar({
   score,
@@ -7,6 +8,11 @@ export function ScoreBar({
   score: number;
   breakdown: ScoreBreakdown;
 }) {
+  const numeric = finiteNumber(score);
+  const percent =
+    numeric === null
+      ? null
+      : Math.round(Math.min(1, Math.max(0, numeric)) * 100);
   return (
     <div
       className="score-cell"
@@ -14,12 +20,15 @@ export function ScoreBar({
         .map(([key, part]) => `${key}: ${(part.value * 100).toFixed(0)}`)
         .join(" · ")}
     >
-      <strong>{Math.round(score * 100)}</strong>
+      <strong>{percent ?? "—"}</strong>
       <span
         className="score-track"
-        aria-label={`Score ${Math.round(score * 100)} de 100`}
+        role="img"
+        aria-label={
+          percent === null ? "Score não informado" : `Score ${percent} de 100`
+        }
       >
-        <i style={{ width: `${score * 100}%` }} />
+        <i style={{ width: `${percent ?? 0}%` }} />
       </span>
     </div>
   );

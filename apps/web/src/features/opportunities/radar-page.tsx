@@ -8,7 +8,14 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { ArrowRightIcon, FunnelIcon, PulseIcon } from "@phosphor-icons/react";
+import {
+  ArrowRightIcon,
+  ArrowUpRightIcon,
+  CrosshairIcon,
+  FunnelIcon,
+  PulseIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -18,12 +25,14 @@ import { LiveValue } from "@/components/live/live-value";
 import { SlaCountdown } from "@/components/live/sla-countdown";
 import { useLiveClock } from "@/lib/live-clock";
 import { safeSum } from "@/lib/numbers";
+import { AresMark } from "@/components/ares-mark";
 import { getOpportunities } from "./api";
 import { money, signalLabels } from "./format";
 import { RiskDistributionChart } from "./risk-distribution-chart";
 import { ScoreBar } from "./score-bar";
 import type { OpportunityListItem } from "./types";
 import "./radar-v2.css";
+import "./observatory-radar.css";
 
 const RadarIntelligenceCharts = lazy(() =>
   import("./radar-intelligence-charts").then((module) => ({
@@ -68,16 +77,45 @@ export function RadarPage() {
   const items = query.data?.items ?? emptyItems;
   const now = useLiveClock();
   const atRiskValue = useMemo(
-    () => safeSum(items.filter(item => (item.currency || "BRL") === "BRL"), "deal_value"),
+    () =>
+      safeSum(
+        items.filter((item) => item.currency === "BRL"),
+        "deal_value",
+      ),
     [items],
   );
-  const otherCurrencies = useMemo(() => [...new Set(items.map(item => item.currency).filter(currency => currency && currency !== "BRL"))], [items]);
+  const otherCurrencies = useMemo(
+    () => [
+      ...new Set(
+        items
+          .map((item) => item.currency)
+          .filter((currency) => currency && currency !== "BRL"),
+      ),
+    ],
+    [items],
+  );
+  const missingCurrencyCount = items.filter((item) => !item.currency).length;
+  const focus = items[0];
+  const chartState = query.isError
+    ? "error"
+    : query.isLoading
+      ? "loading"
+      : query.dataUpdatedAt && now - query.dataUpdatedAt > 90_000
+        ? "stale"
+        : "ready";
   const [toast, setToast] = useState(false);
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
-    const notify = () => { setToast(true); clearTimeout(timeout); timeout = setTimeout(() => setToast(false), 5_000); };
+    const notify = () => {
+      setToast(true);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setToast(false), 5_000);
+    };
     window.addEventListener("ares:sla-overdue", notify);
-    return () => { window.removeEventListener("ares:sla-overdue", notify); clearTimeout(timeout); };
+    return () => {
+      window.removeEventListener("ares:sla-overdue", notify);
+      clearTimeout(timeout);
+    };
   }, []);
   const overdueCount = useMemo(
     () =>
@@ -103,7 +141,8 @@ export function RadarPage() {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && (tableWrapRef.current?.scrollTop ?? 0) > 0) revealNextBatch();
+        if (entry.isIntersecting && (tableWrapRef.current?.scrollTop ?? 0) > 0)
+          revealNextBatch();
       },
       { root: tableWrapRef.current, threshold: 0.8 },
     );
@@ -113,23 +152,45 @@ export function RadarPage() {
 
   function resetProgressiveList() {
     setVisibleCount(ROW_BATCH);
-    if(tableWrapRef.current) tableWrapRef.current.scrollTop = 0;
+    if (tableWrapRef.current) tableWrapRef.current.scrollTop = 0;
   }
 
   return (
-    <main className="workspace radar-page radar-v2">
+    <main
+      className="workspace radar-page radar-v2 observatory"
+      data-fetching={query.isFetching}
+    >
       <header className="page-header radar-page-header">
         <div>
-          <span className="eyebrow">
-            ARES Connect · inteligência operacional
-          </span>
-          <h1>Radar ARES <small className="heading-index">01</small></h1>
-          <p>
-            Onde agir agora. Sinais, exposição comercial e prioridades em uma leitura contínua do seu CRM.
-          </p>
+          <span className="eyebrow">ARES Connect / Observatório comercial</span>
+          <h1>
+            Radar ARES
+            <span className="heading-slash" aria-hidden>
+              {" "}
+              /
+            </span>
+          </h1>
+          <p>O risco em perspectiva. A próxima decisão em foco.</p>
         </div>
         <div className="radar-header-actions">
-          <Freshness timestamp={query.dataUpdatedAt} />
+          <div className="radar-sync">
+            <span className="sync-indicator" aria-hidden>
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>
+              <b>
+                {query.isFetching
+                  ? "Consultando o CRM"
+                  : query.isError
+                    ? "Leitura indisponível"
+                    : "Leitura do CRM"}
+              </b>
+              <Freshness timestamp={query.dataUpdatedAt} />
+            </span>
+          </div>
           <Button
             variant="outline"
             onClick={() => void query.refetch()}
@@ -138,49 +199,204 @@ export function RadarPage() {
             <PulseIcon aria-hidden />{" "}
             {query.isFetching ? "Atualizando" : "Atualizar radar"}
           </Button>
-          {items[0] ? <Button asChild><Link to={`/opportunities/${items[0].id}`}>Próxima ação <ArrowRightIcon aria-hidden /></Link></Button> : null}
         </div>
       </header>
 
-      {query.isError && query.data ? <div className="route-status" role="alert">A atualização falhou. Exibindo a última leitura bem-sucedida.<Button variant="outline" onClick={() => void query.refetch()}>Tentar novamente</Button></div> : null}
-      <section className="radar-summary" aria-label="Resumo do Radar">
-        <div className="metric-card metric-card-primary">
-          <span>Na fila</span>
-          <strong><LiveValue value={items.length} /></strong>
-          <small>oportunidades abertas no recorte</small>
+      {query.isError && query.data ? (
+        <div className="route-status" role="alert">
+          A atualização falhou. Exibindo a última leitura bem-sucedida.
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Tentar novamente
+          </Button>
         </div>
-        <div className="metric-card metric-card-value">
-          <span className="analysis-kicker">EXPOSIÇÃO COMERCIAL OBSERVADA</span>
-          <span className="exposure-label">Valor observado em risco · BRL</span>
-          <strong>{atRiskValue.valid ? <LiveValue value={atRiskValue.total} format={money} /> : "Valor não informado"}</strong>
-          <small>Valor dos negócios neste recorte. O painel não afirma causalidade nem receita incremental.</small>
-          {atRiskValue.partial ? <p className="partial-note">Total parcial: {atRiskValue.missing} registros sem valor válido excluídos. O valor completo não está disponível.</p> : null}
-          {otherCurrencies.map(currency => { const total = safeSum(items.filter(item => item.currency === currency), "deal_value"); return <p className="partial-note" key={currency}>{currency}: {total.valid ? money(total.total, currency) : "valor não informado"}{total.partial ? ` · ${total.missing} valores ausentes` : ""}. Moedas apresentadas separadamente.</p>; })}
-          <div className="exposure-foot">Fonte: {query.data?.source ?? "ARES Core"} · Recorte atual da API · Associação</div>
-        </div>
-        <div className="metric-card metric-card-critical">
-          <span>SLA vencido</span>
-          <strong><LiveValue value={overdueCount} worsening /></strong>
-          <small>exigem decisão operacional imediata</small>
-        </div>
-        <div className="metric-card metric-card-neutral">
-          <span>Sem responsável</span>
-          <strong><LiveValue value={unassignedCount} worsening /></strong>
-          <small>oportunidades sem ownership atual</small>
-        </div>
+      ) : null}
+      <section className="observatory-overview" aria-label="Resumo do Radar">
+        <article className="exposure-console">
+          <div className="console-caption">
+            <span>
+              <i aria-hidden />
+              EXPOSIÇÃO NO RECORTE
+            </span>
+            <span>BRL / 01</span>
+          </div>
+          <div className="exposure-reading">
+            <span>Valor observado em risco</span>
+            <strong className={!atRiskValue.valid ? "no-value" : ""}>
+              {atRiskValue.valid ? (
+                <LiveValue value={atRiskValue.total} format={money} />
+              ) : query.isLoading ? (
+                "Lendo valores…"
+              ) : (
+                "Valor não informado"
+              )}
+            </strong>
+            <p>
+              Valor dos negócios em observação. Não representa receita
+              recuperada.
+            </p>
+            <AresMark className="console-monogram" />
+          </div>
+          {atRiskValue.partial ? (
+            <p className="console-notice">
+              Total parcial · {atRiskValue.missing} registros em BRL sem valor
+              válido, excluídos da soma.
+            </p>
+          ) : null}
+          {missingCurrencyCount ? (
+            <p className="console-notice">
+              {missingCurrencyCount} registros sem moeda excluídos dos totais.
+            </p>
+          ) : null}
+          {otherCurrencies.map((currency) => {
+            const total = safeSum(
+              items.filter((item) => item.currency === currency),
+              "deal_value",
+            );
+            return (
+              <p className="console-notice" key={currency}>
+                {currency}:{" "}
+                {total.valid
+                  ? money(total.total, currency)
+                  : "valor não informado"}
+                {total.partial ? ` · ${total.missing} valores ausentes` : ""}.
+                Sem conversão entre moedas.
+              </p>
+            );
+          })}
+          <dl className="console-metrics">
+            <div>
+              <dt>Em observação</dt>
+              <dd>
+                <LiveValue value={query.data ? items.length : null} empty="—" />
+              </dd>
+              <dd className="metric-description">oportunidades no recorte</dd>
+            </div>
+            <div>
+              <dt>Prazo excedido</dt>
+              <dd>
+                <LiveValue
+                  value={query.data ? overdueCount : null}
+                  empty="—"
+                  worsening
+                />
+              </dd>
+              <dd className="metric-description">SLA vencido</dd>
+            </div>
+            <div>
+              <dt>Sem responsável</dt>
+              <dd>
+                <LiveValue
+                  value={query.data ? unassignedCount : null}
+                  empty="—"
+                  worsening
+                />
+              </dd>
+              <dd className="metric-description">aguardam atribuição</dd>
+            </div>
+          </dl>
+          <div className="console-source">
+            <span>Fonte · {query.data?.source ?? "ARES Core"}</span>
+            <span>Observação ≠ causalidade</span>
+          </div>
+        </article>
+        <article className="focus-dossier">
+          <header>
+            <span className="analysis-kicker">
+              <CrosshairIcon aria-hidden />
+              DECISÃO EM FOCO
+            </span>
+            <span className="dossier-index">
+              01<span> / FILA</span>
+            </span>
+          </header>
+          {focus ? (
+            <>
+              <div className="focus-title">
+                <span className={`priority-pill p${focus.priority}`}>
+                  {priorityLabels[focus.priority] ?? "Não classificada"}
+                </span>
+                <h2>{focus.title}</h2>
+                <p>
+                  {signalLabels[focus.primary_signal_type ?? ""] ??
+                    focus.primary_signal_type ??
+                    "Sinal não informado"}{" "}
+                  <span>· {focus.external_stage ?? "Sem estágio"}</span>
+                </p>
+              </div>
+              <div className="focus-facts">
+                <div>
+                  <span>Score de prioridade</span>
+                  <ScoreBar
+                    score={focus.score}
+                    breakdown={focus.score_breakdown}
+                  />
+                </div>
+                <div>
+                  <span>Janela de ação</span>
+                  <SlaCountdown timestamp={focus.sla_at} />
+                </div>
+              </div>
+              <div className="focus-action">
+                <p>
+                  <ShieldCheckIcon aria-hidden />
+                  Leia as evidências antes de decidir.
+                </p>
+                <Button asChild>
+                  <Link to={`/opportunities/${focus.id}`}>
+                    Analisar oportunidade
+                    <ArrowUpRightIcon aria-hidden />
+                  </Link>
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="focus-empty">
+              <CrosshairIcon aria-hidden />
+              <h2>
+                {query.isError
+                  ? "Aguardando conexão"
+                  : query.isLoading
+                    ? "Localizando prioridades"
+                    : "Nenhuma decisão neste recorte"}
+              </h2>
+              <p>
+                {query.isError
+                  ? "Tente atualizar o Radar para retomar a leitura."
+                  : "As oportunidades identificadas aparecerão aqui, na ordem de prioridade."}
+              </p>
+            </div>
+          )}
+          <footer>Ordem do ARES · prioridade → SLA → score</footer>
+        </article>
       </section>
+
+      <div className="section-caption">
+        <span>01 / LEITURA DO CENÁRIO</span>
+        <span>Distribuição atual · sem projeções</span>
+      </div>
 
       {items.length > 0 ? (
         <Suspense fallback={<IntelligenceSkeleton />}>
-          <RadarIntelligenceCharts items={items} now={now} freshness={query.dataUpdatedAt} state={query.isError ? "error" : "ready"} onRetry={() => void query.refetch()} />
+          <RadarIntelligenceCharts
+            items={items}
+            now={now}
+            freshness={query.dataUpdatedAt}
+            source={query.data?.source}
+            state={chartState}
+            onRetry={() => void query.refetch()}
+          />
         </Suspense>
       ) : null}
 
+      <div className="section-caption">
+        <span>02 / MESA DE DECISÃO</span>
+        <span>Prioridades e evidências rastreáveis</span>
+      </div>
       <section className="radar-layout">
         <div className="panel radar-table-panel">
           <div className="panel-heading radar-toolbar">
             <div>
-              <span className="analysis-kicker">PRÓXIMA MELHOR AÇÃO</span>
+              <span className="analysis-kicker">ONDE AGIR AGORA</span>
               <h2>Fila priorizada</h2>
               <p>Ordenação fixa: prioridade → SLA → score</p>
             </div>
@@ -255,13 +471,27 @@ export function RadarPage() {
             </div>
           ) : (
             <>
-              <div className="radar-table-wrap well" ref={tableWrapRef} tabIndex={0} role="region" aria-label="Fila de oportunidades com rolagem" onScroll={event => {const el=event.currentTarget; if(hasMore && el.scrollTop > 0 && el.scrollHeight-el.clientHeight-el.scrollTop < 24) revealNextBatch();}}>
+              <div
+                className="radar-table-wrap well"
+                ref={tableWrapRef}
+                tabIndex={0}
+                role="region"
+                aria-label="Fila de oportunidades com rolagem"
+                onScroll={(event) => {
+                  const el = event.currentTarget;
+                  if (
+                    hasMore &&
+                    el.scrollTop > 0 &&
+                    el.scrollHeight - el.clientHeight - el.scrollTop < 24
+                  )
+                    revealNextBatch();
+                }}
+              >
                 <table className="radar-table">
                   <thead>
                     <tr>
                       <th>Prioridade</th>
                       <th>Oportunidade</th>
-                      <th>Sinal principal</th>
                       <th>Score</th>
                       <th>SLA</th>
                       <th>Valor</th>
@@ -285,15 +515,17 @@ export function RadarPage() {
                           </span>
                         </td>
                         <td>
-                          <Link className="opportunity-title" to={`/opportunities/${item.id}`}>{item.title}</Link>
+                          <Link
+                            className="opportunity-title"
+                            to={`/opportunities/${item.id}`}
+                          >
+                            {item.title}
+                          </Link>
                           <small>
-                            {item.external_stage ?? "Sem estágio"} ·{" "}
-                            {item.signal_count} sinais
+                            {signalLabels[item.primary_signal_type ?? ""] ??
+                              "Sem sinal principal"}{" "}
+                            · {item.signal_count} sinais
                           </small>
-                        </td>
-                        <td>
-                          {signalLabels[item.primary_signal_type ?? ""] ??
-                            item.primary_signal_type}
                         </td>
                         <td>
                           <ScoreBar
@@ -305,7 +537,11 @@ export function RadarPage() {
                           <SlaCountdown timestamp={item.sla_at} />
                         </td>
                         <td className="tabular">
-                          <LiveValue value={item.deal_value} format={value => money(value,item.currency)} animateInitial={false} />
+                          <LiveValue
+                            value={item.deal_value}
+                            format={(value) => money(value, item.currency)}
+                            animateInitial={false}
+                          />
                         </td>
                         <td>
                           <Link
@@ -343,15 +579,42 @@ export function RadarPage() {
             </>
           )}
           <div className="provenance queue-provenance">
-            <span>Fonte: {query.data?.source ?? "ARES Core"} · Recorte carregado da API</span><Freshness timestamp={query.dataUpdatedAt} />
+            <span>
+              Fonte: {query.data?.source ?? "ARES Core"} · Recorte carregado da
+              API
+            </span>
+            <Freshness timestamp={query.dataUpdatedAt} />
           </div>
         </div>
         <aside className="risk-panel">
-          <RiskDistributionChart items={items} freshness={query.dataUpdatedAt} />
-          <div className="reading-guide s1"><span className="analysis-kicker">LEITURA EXPLICÁVEL</span><h2>Do sinal à próxima ação.</h2><p>Cada prioridade abre uma cadeia de evidências, contexto, recomendação e decisão humana.</p><ol><li><span>01</span>Identificar os sinais</li><li><span>02</span>Compreender a urgência</li><li><span>03</span>Decidir e acompanhar</li></ol></div>
+          <RiskDistributionChart
+            items={items}
+            freshness={query.dataUpdatedAt}
+            source={query.data?.source}
+            state={chartState}
+            onRetry={() => void query.refetch()}
+          />
+          <div className="audit-note">
+            <ShieldCheckIcon aria-hidden />
+            <div>
+              <strong>Da observação à evidência.</strong>
+              <p>
+                A prioridade direciona a análise. Ações dependem de Policy e
+                aprovação; valor influenciado não é resultado incremental
+                comprovado.
+              </p>
+              <Link to="/journal">
+                Consultar trilha de eventos <ArrowUpRightIcon aria-hidden />
+              </Link>
+            </div>
+          </div>
         </aside>
       </section>
-      {toast ? <div className="sla-toast" role="status">Um prazo de ação acabou de vencer. A fila foi sinalizada.</div> : null}
+      {toast ? (
+        <div className="sla-toast" role="status">
+          Um prazo de ação acabou de vencer. A fila foi sinalizada.
+        </div>
+      ) : null}
     </main>
   );
 }

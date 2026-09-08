@@ -30,6 +30,25 @@ export type AresThemeTokens = ReturnType<typeof readThemeTokens>;
 
 /** Category identity keeps its colour when a refetch changes the ordering. */
 export function categoryColor(label: string, tokens: AresThemeTokens) {
+  // Explicit signal identity avoids hash collisions between the dominant signals.
+  switch (label) {
+    case "Alto valor em risco":
+      return tokens.brasa;
+    case "Contato inativo":
+      return tokens.aco;
+    case "Follow-up vencido":
+      return tokens.ambar;
+    case "Fechamento em risco":
+      return tokens.jade;
+    case "Proposta parada":
+      return tokens.lilas;
+    case "proposal":
+      return tokens.jade;
+    case "qualification":
+      return tokens.aco;
+    case "negotiation":
+      return tokens.ambar;
+  }
   let hash = 0;
   for (const character of label)
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
@@ -41,7 +60,16 @@ export function categoryColor(label: string, tokens: AresThemeTokens) {
 export function useThemeTokens() {
   const [tokens, setTokens] = useState(readThemeTokens);
   useEffect(() => {
-    const observer = new MutationObserver(() => setTokens(readThemeTokens()));
+    const observer = new MutationObserver(() => {
+      const next = readThemeTokens();
+      setTokens((previous) =>
+        (Object.keys(next) as Array<keyof AresThemeTokens>).every(
+          (key) => previous[key] === next[key],
+        )
+          ? previous
+          : next,
+      );
+    });
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme", "class"],
@@ -83,16 +111,17 @@ export function aresTooltip(tokens: AresThemeTokens) {
 
 export function bevelFill(base: string) {
   return new graphic.LinearGradient(0, 0, 0, 1, [
-    { offset: 0, color: color.lift(base, 0.2) },
+    { offset: 0, color: color.lift(base, 0.22) },
+    { offset: 0.08, color: color.lift(base, 0.08) },
     { offset: 0.45, color: base },
-    { offset: 1, color: color.lift(base, -0.24) },
+    { offset: 1, color: color.lift(base, -0.2) },
   ]);
 }
 
 export function raisedBar(base: string, tokens: AresThemeTokens) {
   return {
     color: bevelFill(base),
-    borderColor: tokens.edgeDark,
+    borderColor: color.lift(base, -0.42),
     borderWidth: 1,
     borderRadius: [tokens.radius, tokens.radius, 0, 0],
     shadowColor: tokens.edgeDark,
@@ -114,7 +143,12 @@ export function categoryAxis(tokens: AresThemeTokens, data: string[]) {
     data,
     axisLine: { lineStyle: { color: tokens.edgeDark, width: 2 } },
     axisTick: { show: false },
-    axisLabel: { color: tokens.ink2, fontSize: 11, fontFamily: tokens.font },
+    axisLabel: {
+      color: tokens.ink2,
+      fontSize: 11,
+      fontFamily: tokens.font,
+      hideOverlap: true,
+    },
   };
 }
 
