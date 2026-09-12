@@ -18,6 +18,7 @@ import {
   SignOutIcon,
   SunIcon,
   CrosshairIcon,
+  KanbanIcon,
 } from "@phosphor-icons/react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -37,6 +38,10 @@ const FakeCRMLabPage = lazy(() =>
   })),
 );
 
+const PipelinePage = lazy(() =>
+  import("@/features/pipeline/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+);
+
 function App() {
   const { session, signOut } = useAuth();
   const sidebarRef = useRef<HTMLElement>(null);
@@ -51,7 +56,7 @@ function App() {
       /* Private browser. */
     }
     if (stored === "light" || stored === "dark") return stored;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches
       ? "dark"
       : "light";
   });
@@ -176,6 +181,14 @@ function App() {
           </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/pipeline"
+            title="Funil CRM"
+          >
+            <KanbanIcon aria-hidden />
+            <span className="nav-copy">Funil CRM</span>
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
             to="/approvals"
             title="Aprovações"
           >
@@ -267,6 +280,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/radar" replace />} />
           <Route path="/journal" element={<EventJournalPage />} />
+          <Route path="/pipeline" element={<Suspense fallback={<main className="workspace route-loading" aria-busy="true">Preparando leitura do funil…</main>}><PipelinePage /></Suspense>} />
           <Route
             path="/fake-crm"
             element={

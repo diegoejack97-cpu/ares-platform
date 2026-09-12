@@ -11,14 +11,12 @@ import {
 } from "@/charts/ChartFrame";
 import {
   aresTooltip,
-  bevelFill,
   categoryAxis,
   categoryColor,
   raisedBar,
   useThemeTokens,
   valueAxis,
 } from "@/charts/aresTheme";
-import { LiveValue } from "@/components/live/live-value";
 import { finiteNumber, safeSum } from "@/lib/numbers";
 
 import { money, signalLabels } from "./format";
@@ -224,64 +222,30 @@ export function RadarIntelligenceCharts({
   const signalOption = useMemo<EChartsCoreOption>(
     () => ({
       textStyle: { fontFamily: tokens.font, color: tokens.ink },
+      grid: { left: 132, right: 30, top: 12, bottom: 26 },
       tooltip: {
         ...aresTooltip(tokens),
-        trigger: "item",
-        valueFormatter: (value: unknown) =>
-          `${finiteNumber(value) ?? 0} oportunidades`,
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (value: unknown) => `${finiteNumber(value) ?? 0} oportunidades com este sinal principal`,
       },
-      series: [
-        {
-          id: "signal-track",
-          type: "pie",
-          radius: ["57%", "81%"],
-          center: ["50%", "50%"],
-          silent: true,
-          z: 1,
-          label: { show: false },
-          tooltip: { show: false },
-          data: [
-            {
-              value: 1,
-              itemStyle: {
-                color: tokens.well,
-                borderColor: tokens.edgeDark,
-                borderWidth: 2,
-              },
-            },
-          ],
-          animation: false,
-        },
-        {
-          id: "signal-distribution",
-          type: "pie",
-          radius: ["57%", "81%"],
-          center: ["50%", "50%"],
-          z: 2,
-          padAngle: 1.6,
-          label: { show: false },
-          labelLine: { show: false },
-          minAngle: 2,
-          emphasis: {
-            scaleSize: 4,
-            itemStyle: { shadowOffsetY: 4, shadowBlur: 0 },
-          },
-          itemStyle: {
-            borderColor: tokens.edgeDark,
-            borderWidth: 1,
-            shadowColor: tokens.edgeDark,
-            shadowOffsetY: 2,
-            shadowBlur: 0,
-          },
-          data: signals.map((row) => ({
-            name: row.label,
-            value: row.value,
-            itemStyle: {
-              color: bevelFill(categoryColor(row.label, tokens)),
-            },
-          })),
-        },
-      ],
+      xAxis: { ...valueAxis(tokens), splitNumber: 3 },
+      yAxis: {
+        ...categoryAxis(tokens, signals.map((row) => row.label)),
+        inverse: true,
+        axisLine: { show: false },
+        axisLabel: { color: tokens.ink2, fontSize: 11, width: 122, overflow: "break", lineHeight: 14 },
+      },
+      series: [{
+        id: "signal-distribution", type: "bar", name: "Sinal principal",
+        barMaxWidth: 20,
+        label: { show: true, position: "right", color: tokens.ink, fontSize: 12, fontWeight: 650 },
+        data: signals.map((row) => ({
+          name: row.label, value: row.value,
+          itemStyle: { ...raisedBar(categoryColor(row.label, tokens), tokens), borderRadius: [0, 2, 2, 0] },
+        })),
+        emphasis: { focus: "self" },
+      }],
     }),
     [signals, tokens],
   );
@@ -448,21 +412,8 @@ export function RadarIntelligenceCharts({
           />
         }
       >
-        <div className="chart-donut-layout">
-          <div className="chart-donut-plot">
-            <AresChart
-              option={signalOption}
-              label="Composição das oportunidades por sinal dominante"
-            />
-            <div className="chart-donut-center">
-              <strong>
-                <LiveValue value={items.length} />
-              </strong>
-              <span>oportunidades</span>
-            </div>
-          </div>
-          <ChartLegend rows={signalRows} />
-        </div>
+        <AresChart option={signalOption} label="Oportunidades por sinal principal, em ordem de frequência" />
+        <p className="chart-reading-note">Cada oportunidade entra uma vez, pelo sinal principal.</p>
       </ChartFrame>
       <ChartFrame
         {...metadata}

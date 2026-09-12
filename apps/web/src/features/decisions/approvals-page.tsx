@@ -73,6 +73,7 @@ export function ApprovalsPage() {
       {approvals.isLoading ? (
         <div
           className="approval-grid approval-loading"
+          role="status"
           aria-label="Carregando aprovações"
         >
           <i />

@@ -1,5 +1,13 @@
 /* ARES Observatory: cut metal planes, offset edges and quiet instrument wells. */
 :root {
+  --space-unit: 4px;
+  --workspace-gutter: clamp(20px, 2.2vw, 40px);
+  --type-label: 11px;
+  --type-body: 13px;
+  --type-section: 17px;
+  --surface-radius: 3px 10px 3px 3px;
+  --control-radius: 3px;
+  --font-data: "Cascadia Code", Consolas, monospace;
   --bg: #141a1c;
   --well: #101517;
   --panel: #20282b;
@@ -234,16 +242,16 @@ body {
   height: 18px;
 }
 .app-shell .workspace {
-  max-width: 1680px;
-  padding: 28px 32px 46px;
+  max-width: 1840px;
+  padding: 24px var(--workspace-gutter) 40px;
 }
 .workspace .page-header {
-  padding-bottom: 22px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--edge);
-  margin-bottom: 25px;
+  margin-bottom: 20px;
 }
 .workspace .page-header h1 {
-  font-size: clamp(30px, 2.8vw, 40px);
+  font-size: clamp(28px, 2.4vw, 36px);
   letter-spacing: -0.055em;
   font-weight: 660;
 }
@@ -268,7 +276,7 @@ body {
 .workspace .panel,
 .workspace .chart-frame,
 .workspace .approval-card {
-  border-radius: 4px 14px 4px 4px;
+  border-radius: var(--surface-radius);
   border: 1px solid var(--edge);
   background: var(--panel);
   box-shadow: var(--e-1);
@@ -388,6 +396,109 @@ body {
 .workspace .evidence-card {
   border-radius: 4px 12px 4px 4px;
 }
+/* Shared operational workspaces: one frame, quiet internal divisions. */
+.workspace :is(.status-rail, .lab-status-rail, .detail-meta) {
+  border-radius: var(--surface-radius);
+  box-shadow: inset 0 1px var(--edge-hi), 0 2px var(--edge-dark);
+}
+.workspace :is(.status-rail, .lab-status-rail, .detail-meta) > div {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  border-right: 1px solid var(--edge);
+}
+.workspace :is(.status-rail, .lab-status-rail, .detail-meta) > div:last-child {
+  border-right: 0;
+}
+.workspace .status-ok { display: flex; align-items: center; gap: 8px; }
+.workspace .status-ok > svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.journal-page .table-panel [data-slot="table-container"] { max-height: 480px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.journal-page .table-panel thead { position: sticky; top: 0; z-index: 2; }
+.journal-page .status-rail { margin-bottom: 20px; }
+.workspace :is([data-slot="table-container"], .radar-table-wrap, .lab-table-wrap) { scrollbar-color: var(--edge) transparent; scrollbar-width: thin; }
+.workspace :is(.status-rail, .lab-status-rail, .detail-meta) :is(span, small),
+.workspace :is(.provenance, .contract-note, .panel-heading p) {
+  font-size: var(--type-label);
+  line-height: 1.6;
+}
+.workspace :is(.table-panel, .lab-deals) [data-slot="table-container"],
+.workspace .lab-table-wrap {
+  box-shadow: none;
+  background: var(--panel);
+}
+.workspace :is(th, [data-slot="table-head"]) {
+  font-family: var(--font-data);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .045em;
+  height: 38px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--well);
+}
+.workspace :is(td, [data-slot="table-cell"]) {
+  font-size: 12px;
+  line-height: 1.55;
+  padding-block: 12px;
+}
+.workspace .panel-heading {
+  padding: 16px 20px;
+  background: transparent;
+}
+.workspace .panel-heading h2 { font-size: var(--type-section); letter-spacing: -.02em; }
+.workspace :is(.evidence-list, .lab-operation-stack) { display: grid; gap: 0; }
+.workspace .evidence-card {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--edge);
+  border-left: 2px solid var(--brasa);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 16px;
+}
+.workspace .evidence-card:hover { transform: none; background: var(--raised); box-shadow: none; }
+.workspace :is(.lab-operation-stack form, .decision-audit, .action-copy, .context-card dl, .score-breakdown dl) {
+  border-radius: 0;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--well) 55%, var(--panel));
+  border-block: 1px solid var(--edge);
+}
+.workspace .lab-stage-grid { gap: 0; padding: 0; }
+.workspace .lab-stage-cell {
+  border: 0;
+  border-right: 1px solid var(--edge);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 18px;
+}
+.workspace .lab-stage-cell:last-child { border-right: 0; }
+.workspace .approval-grid { gap: 20px; }
+.workspace .approval-item { border-radius: var(--surface-radius); }
+.workspace .approval-item .approval-card { border: 0; box-shadow: none; border-radius: 0; }
+.workspace :is(.decision-strip, .decision-rationale, .timeline p, .evidence-card p) { font-size: 12px; line-height: 1.65; }
+.workspace :is(input, select, textarea) { border-color: var(--edge); border-radius: var(--control-radius); box-shadow: inset 0 1px 2px #00000018; }
+.workspace :is([data-slot="badge"], .priority-pill, .lab-scenario) { border-radius: 3px; box-shadow: none; }
+.workspace :is(.chart-frame-heading p, .chart-frame-context, .chart-frame-footer, .chart-frame-footer .chart-attribution) { font-size: var(--type-label); }
+.workspace .chart-plot { border: 0; border-radius: 0; background: transparent; background-image: none; box-shadow: none; }
+.workspace .chart-frame-body { padding: 8px 12px 12px; }
+.workspace .chart-frame-header { padding: 16px 20px 0; }
+.workspace .chart-frame-heading h2::before { display: none; }
+.workspace .chart-frame-heading h2 { font-size: var(--type-section); }
+.workspace .chart-frame-footer { padding: 10px 20px; background: color-mix(in srgb, var(--well) 45%, var(--panel)); }
+.workspace .chart-frame-footer .freshness-chip { font-size: var(--type-label); }
+.workspace .chart-view-toggle { background: transparent; border: 1px solid var(--edge); box-shadow: none; border-radius: var(--control-radius); padding: 2px; }
+.workspace .chart-view-toggle button { font-size: 10px; min-height: 30px; }
+.workspace .chart-view-toggle button[aria-pressed="true"] { background: var(--raised); box-shadow: inset 0 1px var(--edge-hi), 0 1px var(--edge-dark); }
+.chart-reading-note { font-size: 11px; color: var(--ink-3); margin: 8px 0 0; line-height: 1.55; }
+.app-shell .nav-item { border-radius: var(--control-radius); }
+.app-shell .nav-item.active { box-shadow: inset 0 1px var(--edge-hi), 0 2px var(--edge-dark); }
+.app-shell .topbar { min-height: 56px; padding-inline: var(--workspace-gutter); }
+.app-shell .tenant-name { font-size: 12px; }
+.app-shell .environment-label { font-family: var(--font-data); font-size: 9px; }
+.app-shell .brand { height: 76px; }
+.workspace .page-header > div:first-child { min-width: 0; }
+.workspace .eyebrow { font-family: var(--font-data); font-size: 10px; letter-spacing: .09em; }
 .login-brand > span svg {
   width: 34px;
   height: 34px;

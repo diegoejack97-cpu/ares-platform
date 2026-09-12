@@ -50,7 +50,7 @@ export function EventJournalPage() {
   const events = eventsQuery.data?.items ?? [];
 
   return (
-    <main className="workspace">
+    <main className="workspace journal-page">
       <header className="page-header">
         <div>
           <span className="eyebrow">ARES CONNECT / RASTREABILIDADE</span>
