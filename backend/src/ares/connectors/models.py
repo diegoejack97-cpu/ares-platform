@@ -17,8 +17,8 @@ class CRMDeal(BaseModel):
     id: str
     title: str
     stage: str
-    value: float = Field(ge=0)
-    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     version: int = Field(default=1, ge=1)
     changed_at: datetime | None = None
     owner_id: str | None = None

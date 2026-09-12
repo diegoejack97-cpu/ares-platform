@@ -543,7 +543,12 @@ class DecisionService:
             if intent["status"] == "succeeded":
                 return {"intent_id": intent_id, "status": "succeeded", "duplicate": True}
             facts = intent["facts_json"]
-            deal_id = str(facts.get("deal", {}).get("external_id") or "")
+            deal_facts = facts.get("deal", {})
+            deal_id = str(
+                (deal_facts.get("external_ref") or {}).get("id")
+                or deal_facts.get("external_id")
+                or ""
+            )
             if not deal_id:
                 raise ValueError("opaque_target_not_resolvable")
             attempt_number_row = connection.execute(

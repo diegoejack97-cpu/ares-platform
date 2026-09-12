@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
@@ -8,10 +9,13 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
+from ares.config import get_settings
+from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
 from ares.connectors.provider import CRMProvider
 from ares.decision.service import DecisionService
 from ares.event_journal.models import IncomingCRMEvent
 from ares.event_journal.service import PostgresEventJournal
+from ares.integrations.service import IntegrationError, IntegrationService
 from ares.intelligence.service import IntelligenceService
 
 
@@ -40,7 +44,7 @@ class TickWorker:
         self._worker_name = worker_name
         self._provider = provider
 
-    def run_once(self, batch_size: int = 10) -> TickResult:
+    def run_once(self, batch_size: int = 10, job_kinds: list[str] | None = None) -> TickResult:
         correlation_id = uuid4()
         with psycopg.connect(self._database_url, row_factory=dict_row) as lock_connection:
             lock_row = lock_connection.execute(
@@ -54,7 +58,7 @@ class TickWorker:
                 return TickResult(acquired=False)
 
             try:
-                jobs = self._claim_jobs(batch_size)
+                jobs = self._claim_jobs(batch_size, job_kinds)
                 succeeded = 0
                 failed = 0
                 for job in jobs:
@@ -76,15 +80,20 @@ class TickWorker:
             finally:
                 lock_connection.execute("select pg_advisory_unlock(hashtext('ares.tick.worker'))")
 
-    def _claim_jobs(self, batch_size: int) -> list[dict[str, Any]]:
+    def _claim_jobs(
+        self,
+        batch_size: int,
+        job_kinds: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
             rows = connection.execute(
                 """
                 with claimable as (
                   select id
                   from public.jobs
-                  where status = 'queued'
+                  where (status = 'queued' or (status='running' and lease_until < now()))
                     and run_after <= now()
+                    and (%s::text[] is null or kind = any(%s::text[]))
                   order by run_after, created_at
                   for update skip locked
                   limit %s
@@ -97,12 +106,31 @@ class TickWorker:
                 where job.id = claimable.id
                 returning job.*
                 """,
-                (batch_size, self._worker_name),
+                (job_kinds, job_kinds, batch_size, self._worker_name),
             ).fetchall()
         return [dict(row) for row in rows]
 
     def _process_job(self, job: dict[str, Any]) -> None:
-        if job["kind"] == "action.execute":
+        if job["kind"] == "integration.sync":
+            settings = get_settings()
+            if settings.environment != "development":
+                raise IntegrationError("client_crm_adapter_not_configured", 503)
+            provider = FakeCRMHTTPProvider(
+                settings.fake_crm_base_url,
+                settings.fake_crm_api_key.get_secret_value(),
+                settings.fake_crm_timeout_seconds,
+                correlation_id=str(job["correlation_id"]),
+            )
+            try:
+                IntegrationService(self._database_url, job["tenant_id"], provider).process_job(job)
+            finally:
+                provider.close()
+            return
+        elif job["kind"] == "integration.project":
+            IntelligenceService(self._database_url, job["tenant_id"]).process_event_sync(
+                UUID(job["payload"]["event_id"])
+            )
+        elif job["kind"] == "action.execute":
             if self._provider is None:
                 raise RuntimeError("crm_provider_missing")
             intent_id = UUID(str(job["payload"]["intent_id"]))
@@ -168,6 +196,9 @@ class TickWorker:
         return response.content
 
     def _fail_job(self, job: dict[str, Any], error: Exception) -> None:
+        if job["kind"] == "integration.sync":
+            self._fail_integration(job, error)
+            return
         terminal = int(job["attempts"]) >= 3
         error_code = type(error).__name__[:80]
         with psycopg.connect(self._database_url) as connection:
@@ -197,6 +228,48 @@ class TickWorker:
                 ) values (%s, %s, 'worker_processing', %s, %s)
                 """,
                 (job["tenant_id"], job["id"], error_code, job["correlation_id"]),
+            )
+
+    def _fail_integration(self, job: dict[str, Any], error: Exception) -> None:
+        code = str(getattr(error, "code", type(error).__name__))[:80]
+        restart = code in {"snapshot_expired", "invalid_cursor", "cursor_filter_mismatch"}
+        terminal = int(job["attempts"]) >= 5 or isinstance(error, (IntegrationError, ValueError))
+        if isinstance(error, CRMProviderRequestError) and error.status_code in {401, 403, 404}:
+            terminal = True
+        delay = min(300, 2 ** min(int(job["attempts"]), 8))
+        if isinstance(error, CRMProviderRequestError) and error.retry_after:
+            with suppress(ValueError):
+                delay = max(delay, min(3600, int(error.retry_after)))
+        with psycopg.connect(self._database_url) as connection:
+            if restart:
+                # Restart from the run's fixed window. Dedupe/version checks make replay safe.
+                connection.execute(
+                    "update public.jobs set payload=jsonb_set(jsonb_set(payload,'{cursor}',"
+                    "'null'::jsonb),'{pages}','0'::jsonb) where tenant_id=%s and id=%s",
+                    (job["tenant_id"], job["id"]),
+                )
+            connection.execute(
+                "update public.jobs set status=%s,error_code=%s,lease_owner=null,lease_until=null,"
+                "run_after=now()+(%s * interval '1 second'),updated_at=now(),"
+                "finished_at=case when %s then now() else null end where tenant_id=%s and id=%s",
+                (
+                    "dead_letter" if terminal else "queued",
+                    code,
+                    delay,
+                    terminal,
+                    job["tenant_id"],
+                    job["id"],
+                ),
+            )
+            connection.execute(
+                "update public.connections set status='degraded',updated_at=now() "
+                "where tenant_id=%s and id=%s and status<>'revoked'",
+                (job["tenant_id"], job["payload"]["connection_id"]),
+            )
+            connection.execute(
+                "insert into public.event_failures(tenant_id,job_id,category,redacted_detail,"
+                "correlation_id) values(%s,%s,'integration_sync',%s,%s)",
+                (job["tenant_id"], job["id"], code, job["correlation_id"]),
             )
 
     def _record_tick(

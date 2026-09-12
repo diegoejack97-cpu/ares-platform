@@ -22,6 +22,7 @@ from ares.decision.models import DecideCommand
 from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
 from ares.event_journal.service import EventJournal, InMemoryEventJournal, PostgresEventJournal
+from ares.integrations.api import integration_router
 from ares.intelligence.service import IntelligenceService
 from ares.workers.tick import TickWorker
 
@@ -65,7 +66,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
     allow_headers=[
         "Authorization",
         "Content-Type",
@@ -122,6 +123,8 @@ async def require_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
+
+app.include_router(integration_router(settings, require_user))
 
 
 def require_development() -> None:

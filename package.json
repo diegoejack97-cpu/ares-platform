@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "dev": "npm run dev:all",
-    "dev:all": "concurrently -n API,WEB,CRM -c blue,green,magenta \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:sandbox\"",
+    "dev:all": "concurrently -n API,WEB,CRM,SYNC -c blue,green,magenta,yellow \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:sandbox\" \"npm run dev:worker\"",
+    "dev:worker": "python -m ares.workers.local",
     "dev:api": "python -m uvicorn ares.api.app:app --reload --port 8000",
     "dev:web": "npm run dev --workspace @ares/web",
     "dev:sandbox": "python -m uvicorn ares.fake_crm_sandbox.app:app --reload --port 8010",

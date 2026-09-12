@@ -239,6 +239,15 @@ class IntelligenceService:
         self, connection: psycopg.Connection[Any], event: CanonicalEvent
     ) -> dict[str, Any]:
         data = event.data
+        if data.get("connection_id"):
+            mirrored = connection.execute(
+                "select * from public.deals where tenant_id=%s and connection_id=%s "
+                "and external_id=%s",
+                (self._tenant_id, UUID(str(data["connection_id"])), event.aggregate_id),
+            ).fetchone()
+            if mirrored is None:
+                raise ValueError("integration_projection_missing")
+            return dict(mirrored)
         row = connection.execute(
             """
             insert into public.deals (
@@ -356,6 +365,7 @@ class IntelligenceService:
                         "id",
                         "title",
                         "external_id",
+                        "external_ref",
                         "external_stage",
                         "status",
                         "value",

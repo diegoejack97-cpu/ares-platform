@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import httpx
 
-from ares.connectors.models import CRMCapabilities, CRMDealPage, CRMWriteResult
+from ares.connectors.models import CRMCapabilities, CRMDeal, CRMDealPage, CRMWriteResult
 
 
 class CRMProviderRequestError(RuntimeError):
@@ -31,7 +31,9 @@ class FakeCRMHTTPProvider:
         timeout_seconds: float = 2.0,
         *,
         transport: httpx.BaseTransport | None = None,
+        correlation_id: str | None = None,
     ) -> None:
+        self._correlation_id = correlation_id
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -42,6 +44,15 @@ class FakeCRMHTTPProvider:
     def close(self) -> None:
         self._client.close()
 
+    @property
+    def correlation_id(self) -> str | None:
+        return self._correlation_id
+
+    @correlation_id.setter
+    def correlation_id(self, value: str | None) -> None:
+        # Providers carrying an intent correlation must be request-scoped, not shared.
+        self._correlation_id = value
+
     def capabilities(self) -> CRMCapabilities:
         response = self._request("GET", "/v1/capabilities")
         return CRMCapabilities.model_validate(response.json())
@@ -49,6 +60,28 @@ class FakeCRMHTTPProvider:
     def describe_schema(self) -> dict[str, Any]:
         response = self._request("GET", "/v1/schema")
         return response.json()
+
+    def get_deal(self, deal_id: str) -> CRMDeal:
+        try:
+            response = self._request("GET", f"/v1/deals/{deal_id}")
+            return CRMDeal.model_validate(response.json())
+        except CRMProviderRequestError as error:
+            if error.status_code != 404 or error.code != "Not Found":
+                raise
+        # Older running sandboxes expose only paged reads. Preserve their in-memory data
+        # instead of restarting/resetting them merely to obtain a single-record endpoint.
+        cursor = None
+        for _ in range(20):
+            page = self.list_deals(cursor=cursor, limit=100)
+            for deal in page.items:
+                if deal.id == deal_id:
+                    return deal
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+        raise CRMProviderRequestError(
+            "Source confirmation unavailable", code="deal_not_found", status_code=404
+        )
 
     def list_deals(
         self,
@@ -109,7 +142,7 @@ class FakeCRMHTTPProvider:
         json: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> httpx.Response:
-        headers = {"X-Correlation-Id": str(uuid4())}
+        headers = {"X-Correlation-Id": self._correlation_id or str(uuid4())}
         if idempotency_key is not None:
             headers["Idempotency-Key"] = idempotency_key
         try:

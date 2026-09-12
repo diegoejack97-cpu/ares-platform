@@ -1,9 +1,12 @@
 import base64
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import Lock
+from time import monotonic
 from typing import Any
+from uuid import uuid4
 
 from ares.fake_crm_sandbox.models import SandboxDeal, SandboxWriteResult
 from ares.fake_crm_sandbox.seed import STAGES, build_seed
@@ -15,6 +18,14 @@ class SandboxConflict(ValueError):
 
 class SandboxNotFound(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class DealSnapshot:
+    items: tuple[SandboxDeal, ...]
+    changed_after: datetime | None
+    watermark: datetime | None
+    expires_at: float
 
 
 class SandboxStore:
@@ -32,6 +43,7 @@ class SandboxStore:
             self.tasks: list[dict[str, Any]] = []
             self.notes: list[dict[str, Any]] = []
             self._idempotency: dict[str, tuple[str, SandboxWriteResult]] = {}
+            self._snapshots: dict[str, DealSnapshot] = {}
         return self.counts()
 
     def counts(self) -> dict[str, int]:
@@ -50,15 +62,60 @@ class SandboxStore:
         limit: int,
         changed_after: datetime | None,
     ) -> tuple[list[SandboxDeal], str | None, datetime | None]:
-        offset = self._decode_cursor(cursor) if cursor else 0
-        ordered = sorted(self.deals.values(), key=lambda item: (item.changed_at, item.id))
-        if changed_after is not None:
-            ordered = [item for item in ordered if item.changed_at > changed_after]
-        items = ordered[offset : offset + limit]
-        next_offset = offset + len(items)
-        next_cursor = self._encode_cursor(next_offset) if next_offset < len(ordered) else None
-        watermark = max((item.changed_at for item in ordered), default=None)
-        return items, next_cursor, watermark
+        if not 1 <= limit <= 100:
+            raise SandboxConflict("invalid_page_size")
+        if changed_after is not None and changed_after.tzinfo is None:
+            raise SandboxConflict("timezone_required")
+        with self._lock:
+            now = monotonic()
+            self._snapshots = {
+                key: value for key, value in self._snapshots.items() if value.expires_at > now
+            }
+            if cursor:
+                snapshot_id, after = self._decode_cursor(cursor)
+                snapshot = self._snapshots.get(snapshot_id)
+                if snapshot is None:
+                    raise SandboxConflict("snapshot_expired")
+                if snapshot.changed_after != changed_after:
+                    raise SandboxConflict("cursor_filter_mismatch")
+            else:
+                snapshot_id, after = str(uuid4()), None
+                # Snapshot copies keep reconciliation stable when records change between pages.
+                # Inclusive watermarks replay ties; the consumer deduplicates versions.
+                ordered = tuple(
+                    item.model_copy(deep=True)
+                    for item in sorted(
+                        self.deals.values(), key=lambda item: (item.changed_at, item.id)
+                    )
+                    if changed_after is None or item.changed_at >= changed_after
+                )
+                snapshot = DealSnapshot(
+                    items=ordered,
+                    changed_after=changed_after,
+                    watermark=max((item.changed_at for item in ordered), default=None),
+                    expires_at=now + 3600,
+                )
+                if len(self._snapshots) >= 128:
+                    oldest = min(self._snapshots, key=lambda key: self._snapshots[key].expires_at)
+                    del self._snapshots[oldest]
+                self._snapshots[snapshot_id] = snapshot
+            remaining = [
+                item
+                for item in snapshot.items
+                if after is None or (item.changed_at, item.id) > after
+            ]
+            items = remaining[:limit]
+            next_cursor = (
+                self._encode_cursor(snapshot_id, items[-1]) if len(remaining) > limit else None
+            )
+            return [item.model_copy(deep=True) for item in items], next_cursor, snapshot.watermark
+
+    def get_deal(self, deal_id: str) -> SandboxDeal:
+        with self._lock:
+            deal = self.deals.get(deal_id)
+            if deal is None:
+                raise SandboxNotFound(deal_id)
+            return deal.model_copy(deep=True)
 
     def write(
         self,
@@ -130,16 +187,22 @@ class SandboxStore:
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod
-    def _encode_cursor(offset: int) -> str:
-        return base64.urlsafe_b64encode(f"offset:{offset}".encode()).decode()
+    def _encode_cursor(snapshot_id: str, last: SandboxDeal) -> str:
+        raw = json.dumps([snapshot_id, last.changed_at.isoformat(), last.id]).encode()
+        return base64.urlsafe_b64encode(raw).decode()
 
     @staticmethod
-    def _decode_cursor(cursor: str) -> int:
+    def _decode_cursor(cursor: str) -> tuple[str, tuple[datetime, str]]:
         try:
-            raw = base64.urlsafe_b64decode(cursor.encode()).decode()
-            prefix, value = raw.split(":", maxsplit=1)
-            if prefix != "offset":
+            values = json.loads(base64.b64decode(cursor.encode(), altchars=b"-_", validate=True))
+            if not isinstance(values, list) or len(values) != 3:
                 raise ValueError
-            return int(value)
-        except (ValueError, UnicodeDecodeError) as error:
+            if not all(isinstance(value, str) for value in values):
+                raise ValueError
+            snapshot_id, changed_at, deal_id = values
+            timestamp = datetime.fromisoformat(changed_at)
+            if timestamp.tzinfo is None:
+                raise ValueError
+            return snapshot_id, (timestamp, deal_id)
+        except (ValueError, UnicodeDecodeError, TypeError) as error:
             raise SandboxConflict("invalid_cursor") from error

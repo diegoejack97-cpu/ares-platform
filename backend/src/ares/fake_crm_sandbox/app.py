@@ -147,6 +147,14 @@ async def list_contacts(_auth: Authorized, _fault: Fault) -> dict[str, Any]:
     return {"items": store.contacts}
 
 
+@app.get("/v1/deals/{deal_id}")
+async def get_deal(deal_id: str, _auth: Authorized, _fault: Fault) -> dict[str, Any]:
+    try:
+        return store.get_deal(deal_id).model_dump(mode="json")
+    except SandboxNotFound as error:
+        raise HTTPException(status_code=404, detail={"code": "deal_not_found"}) from error
+
+
 @app.get("/v1/activities")
 async def list_activities(_auth: Authorized, _fault: Fault) -> dict[str, Any]:
     return {"items": store.activities}
