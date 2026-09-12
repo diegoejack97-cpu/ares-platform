@@ -10,8 +10,9 @@ O objetivo não é vender apenas software. É localizar e recuperar valor que j�
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Marco atual:** M4 em andamento — FakeCRM HTTP Sandbox e adapter contratual entregues; integração
-> com o CRM real, sincronização, reconciliação e write-back ainda dependem da API do cliente.
+> **Marco atual:** M4 concluída localmente — mapeamento, sync retomável, reconciliação e write-back
+> auditado entregues sobre o FakeCRM HTTP Sandbox (ver `docs/m4-local-acceptance.md`). Os endpoints M4
+> respondem apenas em `development`; a homologação com o CRM real do cliente segue pendente.
 
 ## Produtos e módulos
 

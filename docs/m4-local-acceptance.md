@@ -39,5 +39,6 @@ incluem GET individual e paginação por snapshot. Não reiniciar o sandbox para
 divergências de teste; auditar/reconciliar a origem.
 
 O upgrade visual global é uma frente separada: este aceite cobre o Kanban M4,
-não encerra a revisão de todas as telas existentes. Alterações permanecem locais,
-sem commit/push nesta entrega. Avisos não bloqueantes: Fast Refresh e bundle >500 kB.
+não encerra a revisão de todas as telas existentes. As alterações foram commitadas
+em `feat/visual-system-v2` (`f63f2f3`, `ac18e85`); o merge em `main` continua pendente.
+Avisos não bloqueantes: Fast Refresh e bundle >500 kB.
