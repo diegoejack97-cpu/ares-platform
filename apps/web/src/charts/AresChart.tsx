@@ -1,8 +1,16 @@
 import { memo, useEffect, useRef } from "react";
-import { BarChart, LineChart, PieChart } from "echarts/charts";
+import {
+  BarChart,
+  FunnelChart,
+  LineChart,
+  PieChart,
+  TreemapChart,
+} from "echarts/charts";
 import {
   GraphicComponent,
   GridComponent,
+  LegendComponent,
+  MarkLineComponent,
   TooltipComponent,
 } from "echarts/components";
 import {
@@ -19,9 +27,13 @@ registerECharts([
   BarChart,
   LineChart,
   PieChart,
+  FunnelChart,
+  TreemapChart,
   GridComponent,
   GraphicComponent,
   TooltipComponent,
+  LegendComponent,
+  MarkLineComponent,
   SVGRenderer,
 ]);
 
@@ -30,16 +42,20 @@ export const AresChart = memo(function AresChart({
   label,
   className = "",
   physicalAxis = false,
+  formKey = "",
 }: {
   option: EChartsCoreOption;
   label: string;
   className?: string;
   physicalAxis?: boolean;
+  /** Changes when the reader picks a different form, forcing a clean redraw. */
+  formKey?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts | null>(null);
   const optionRef = useRef(option);
   const themeRef = useRef(document.documentElement.dataset.theme);
+  const formKeyRef = useRef(formKey);
 
   // Only mounting owns the instance. Refetch and theme changes use the same renderer.
   useEffect(() => {
@@ -107,9 +123,15 @@ export const AresChart = memo(function AresChart({
         animationEasingUpdate: "cubicOut",
         animationDelay: (index: number) => Math.min(index, 5) * 70,
       },
-      { notMerge: false, replaceMerge: ["series"], lazyUpdate: true },
+      {
+        // Switching form swaps axes and series type, so the previous shape must go.
+        notMerge: formKey !== formKeyRef.current,
+        replaceMerge: ["series", "xAxis", "yAxis", "legend"],
+        lazyUpdate: true,
+      },
     );
-  }, [option]);
+    formKeyRef.current = formKey;
+  }, [option, formKey]);
 
   return (
     <div

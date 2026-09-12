@@ -65,6 +65,48 @@
   transform: translateY(2px);
   box-shadow: var(--e-press);
 }
+.chart-form-picker {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  flex-wrap: wrap;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  box-shadow: var(--e-well);
+}
+.chart-form-picker button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+.chart-form-picker button svg {
+  width: 12px;
+  height: 12px;
+}
+.chart-form-picker button:hover {
+  color: var(--ink);
+}
+.chart-form-picker button[aria-pressed="true"] {
+  background: var(--raised);
+  color: var(--ink);
+  border-color: var(--edge);
+  border-top-color: var(--edge-hi);
+  box-shadow: var(--e-1);
+}
+.chart-form-picker button:active {
+  transform: translateY(1px);
+  box-shadow: var(--e-press);
+}
 .chart-frame-context {
   display: flex;
   align-items: center;
@@ -390,6 +432,12 @@
   }
   .chart-view-toggle {
     margin-left: auto;
+  }
+  .chart-form-picker button span {
+    display: none;
+  }
+  .chart-form-picker button {
+    padding: 3px 6px;
   }
   .chart-frame .chart-donut-layout {
     grid-template-columns: 1fr;

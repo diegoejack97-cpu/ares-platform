@@ -23,6 +23,8 @@
   --bevel-top: #ffffff30; --bevel-bot: #00000042;
   /* Numeric half of the bevel, for renderers that cannot read a CSS colour: same ratio as --bevel-top/--bevel-bot. */
   --bevel-lit: 0.19; --bevel-shade: 0.26; --plot-contour: 0.34;
+  /* Ordinal ramp anchors. Validated for 4-6 steps against --well; the light theme flips them. */
+  --ramp-lit: 0.51; --ramp-shade: 0.44;
   /* Series elevation, in px, on the same 3/5 lip ramp the panels use. */
   --plot-lift: 3; --plot-lift-hover: 5;
   --button-ink: #10151b; --on-solid: #ffffff;
@@ -57,5 +59,6 @@
   --bevel-top: #ffffff66; --bevel-bot: #00000024; --button-ink: #ffffff;
   /* Light inverts the ratio: a strong top highlight, a soft underside. */
   --bevel-lit: 0.40; --bevel-shade: 0.14; --plot-contour: 0.26;
+  --ramp-lit: 0.05; --ramp-shade: 0.73;
   color-scheme: light;
 }

@@ -1,14 +1,37 @@
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  ChartBarHorizontalIcon,
   ChartBarIcon,
+  ChartDonutIcon,
+  ChartLineIcon,
+  ChartPolarIcon,
+  ChartScatterIcon,
+  FunnelIcon,
+  GridFourIcon,
+  SquaresFourIcon,
   TableIcon,
   WarningCircleIcon,
+  type Icon,
 } from "@phosphor-icons/react";
 
 import { Freshness } from "@/components/live/freshness";
 import { LiveValue } from "@/components/live/live-value";
 
+import { CHART_FORMS, useChartForm, type ChartForm } from "./chartForms";
+
 import "./charts.css";
+
+const FORM_ICONS: Record<ChartForm, Icon> = {
+  column: ChartBarIcon,
+  bar: ChartBarHorizontalIcon,
+  line: ChartLineIcon,
+  area: ChartPolarIcon,
+  scatter: ChartScatterIcon,
+  heatmap: GridFourIcon,
+  funnel: FunnelIcon,
+  donut: ChartDonutIcon,
+  treemap: SquaresFourIcon,
+};
 
 export type ChartState =
   "ready" | "loading" | "empty" | "partial" | "stale" | "error";
@@ -37,6 +60,9 @@ export function ChartFrame({
   emptyMessage = "Ainda não há registros neste recorte.",
   className = "",
   actions,
+  forms,
+  formKey,
+  renderForm,
 }: ChartMetadata & {
   title: string;
   definition: string;
@@ -44,14 +70,22 @@ export function ChartFrame({
   period: string;
   attribution?: string;
   table: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   hasData?: boolean;
   emptyMessage?: string;
   className?: string;
   actions?: ReactNode;
+  /** Forms honest for this data. The first is the default. Omit for a fixed chart. */
+  forms?: readonly ChartForm[];
+  /** Stable id under which the reader's chosen form is remembered. */
+  formKey?: string;
+  renderForm?: (form: ChartForm) => ReactNode;
 }) {
   const id = useId();
   const [view, setView] = useState<"chart" | "table">("chart");
+  const offered = forms ?? [];
+  const [form, chooseForm] = useChartForm(formKey ?? title, offered);
+  const switchable = offered.length > 1 && renderForm !== undefined;
   const blank = !hasData || state === "empty";
   const stateMessage =
     state === "error"
@@ -107,6 +141,31 @@ export function ChartFrame({
       <div className="chart-frame-context">
         <span>{unit}</span>
         <span>{period}</span>
+        {switchable && view === "chart" && (
+          <div
+            className="chart-form-picker"
+            role="group"
+            aria-label={`Forma do gráfico de ${title}`}
+          >
+            {offered.map((option) => {
+              const spec = CHART_FORMS[option];
+              const FormIcon = FORM_ICONS[option];
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className="press"
+                  aria-pressed={form === option}
+                  title={spec.hint}
+                  onClick={() => chooseForm(option)}
+                >
+                  <FormIcon weight="bold" aria-hidden />
+                  <span>{spec.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {actions}
       </div>
       {stateMessage && (
@@ -161,7 +220,7 @@ export function ChartFrame({
               id={`${id}-chart`}
               hidden={view !== "chart"}
             >
-              {children}
+              {renderForm ? renderForm(form) : children}
             </div>
             <div
               className="chart-table-well well"

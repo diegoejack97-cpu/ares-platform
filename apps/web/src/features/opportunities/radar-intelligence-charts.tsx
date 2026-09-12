@@ -1,27 +1,26 @@
-import { useMemo, useState } from "react";
-import type { EChartsCoreOption } from "echarts/core";
-
+import { useCallback, useMemo, useState } from "react";
 import { AresChart } from "@/charts/AresChart";
 import {
   ChartDataTable,
   ChartFrame,
-  ChartLegend,
   type ChartDatum,
   type ChartMetadata,
 } from "@/charts/ChartFrame";
-import {
-  aresTooltip,
-  categoryAxis,
-  categoryColor,
-  raisedBar,
-  raisedBarEmphasis,
-  useThemeTokens,
-  valueAxis,
-} from "@/charts/aresTheme";
-import { finiteNumber, safeSum } from "@/lib/numbers";
+import { useThemeTokens } from "@/charts/aresTheme";
+import { magnitudeOption } from "@/charts/magnitudeOption";
+import type { ChartForm } from "@/charts/chartForms";
+import { safeSum } from "@/lib/numbers";
 
 import { money, signalLabels } from "./format";
 import type { OpportunityListItem } from "./types";
+
+/**
+ * Only forms that keep the reading honest. Stages are ordered, so a funnel and a
+ * line are legitimate; signals are nominal, so a funnel would invent a sequence.
+ */
+const STAGE_FORMS: readonly ChartForm[] = ["column", "bar", "funnel", "treemap"];
+const SIGNAL_FORMS: readonly ChartForm[] = ["bar", "column", "treemap"];
+const SLA_FORMS: readonly ChartForm[] = ["bar", "column", "donut"];
 
 function groupItems(
   items: OpportunityListItem[],
@@ -155,163 +154,88 @@ export function RadarIntelligenceCharts({
     ],
     [overdueCount, soonCount, laterCount, missingDeadlineCount, tokens],
   );
-  const signalRows: ChartDatum[] = signals.map((row) => ({
-    ...row,
-    color: categoryColor(row.label, tokens),
-  }));
-  const stageRows: ChartDatum[] = stages.map((row) => ({
-    ...row,
-    color: categoryColor(row.label, tokens),
-  }));
+  const signalRows: ChartDatum[] = signals;
+  const stageRows: ChartDatum[] = stages;
 
-  const stageOption = useMemo<EChartsCoreOption>(
-    () => ({
-      textStyle: { fontFamily: tokens.font, color: tokens.ink },
-      grid: { left: 34, right: 10, top: 22, bottom: 27 },
-      tooltip: {
-        ...aresTooltip(tokens),
-        trigger: "axis",
-        valueFormatter: (value: unknown) => {
-          const parsed = finiteNumber(value);
-          return parsed === null ? "Não informado" : money(parsed, currency);
-        },
-      },
-      xAxis: {
-        ...categoryAxis(
+  // Stages are ordered, so their colour is one hue in monotone steps and the
+  // reader sees the funnel order in the ramp itself.
+  const stageChart = useCallback(
+    (form: ChartForm) => (
+      <AresChart
+        formKey={form}
+        option={magnitudeOption(
+          form,
+          {
+            rows: stages,
+            measure: `Valor observado (${currency})`,
+            format: (value) => money(value, currency),
+            ordered: true,
+            base: tokens.brasa,
+            describe: (row) =>
+              row.value === null
+                ? "Sem valor válido nesta moeda."
+                : `${((row.value / (knownValues.total || 1)) * 100).toFixed(1)}% do valor observado no recorte.`,
+          },
           tokens,
-          stages.map((item) => item.label),
-        ),
-        axisLabel: {
-          color: tokens.ink2,
-          fontSize: 10,
-          interval: 0,
-          width: 70,
-          overflow: "truncate",
-          hideOverlap: true,
-        },
-      },
-      yAxis: {
-        ...valueAxis(tokens),
-        axisLabel: {
-          color: tokens.ink2,
-          fontSize: 10,
-          formatter: (value: number) =>
-            new Intl.NumberFormat("pt-BR", {
-              notation: "compact",
-              maximumFractionDigits: 1,
-            }).format(value),
-        },
-      },
-      series: [
-        {
-          id: "stage-value",
-          type: "bar",
-          name: `Valor observado (${currency})`,
-          barMaxWidth: 36,
-          data: stages.map((item) => ({
-            name: item.label,
-            value: item.value,
-            itemStyle: raisedBar(categoryColor(item.label, tokens), tokens),
-          })),
-          emphasis: raisedBarEmphasis(tokens),
-        },
-      ],
-    }),
-    [stages, tokens, currency],
+        )}
+        label={`Valor observado por etapa, em ${currency}`}
+        physicalAxis={form === "column"}
+      />
+    ),
+    [stages, tokens, currency, knownValues.total],
   );
 
-  const signalOption = useMemo<EChartsCoreOption>(
-    () => ({
-      textStyle: { fontFamily: tokens.font, color: tokens.ink },
-      grid: { left: 132, right: 30, top: 12, bottom: 26 },
-      tooltip: {
-        ...aresTooltip(tokens),
-        trigger: "axis",
-        axisPointer: { type: "shadow" },
-        valueFormatter: (value: unknown) => `${finiteNumber(value) ?? 0} oportunidades com este sinal principal`,
-      },
-      xAxis: { ...valueAxis(tokens), splitNumber: 3 },
-      yAxis: {
-        ...categoryAxis(tokens, signals.map((row) => row.label)),
-        inverse: true,
-        axisLine: { show: false },
-        axisLabel: { color: tokens.ink2, fontSize: 11, width: 122, overflow: "break", lineHeight: 14 },
-      },
-      series: [{
-        id: "signal-distribution", type: "bar", name: "Sinal principal",
-        barMaxWidth: 20,
-        label: { show: true, position: "right", color: tokens.ink, fontSize: 12, fontWeight: 650 },
-        data: signals.map((row) => ({
-          name: row.label, value: row.value,
-          itemStyle: { ...raisedBar(categoryColor(row.label, tokens), tokens), borderRadius: [0, 2, 2, 0] },
-        })),
-        emphasis: { focus: "self" },
-      }],
-    }),
-    [signals, tokens],
+  // Signals are nominal and the task is magnitude, so one hue: bar length is the
+  // measure and the identity channel stays unspent.
+  const signalChart = useCallback(
+    (form: ChartForm) => (
+      <AresChart
+        formKey={form}
+        option={magnitudeOption(
+          form,
+          {
+            rows: signals,
+            measure: "Oportunidades",
+            format: (value) => `${value}`,
+            base: tokens.aco,
+            describe: (row) =>
+              `${(((row.value ?? 0) / (items.length || 1)) * 100).toFixed(1)}% da fila entra por este sinal principal.`,
+          },
+          tokens,
+        )}
+        label="Oportunidades por sinal principal, em ordem de frequência"
+      />
+    ),
+    [signals, tokens, items.length],
   );
 
-  const slaOption = useMemo<EChartsCoreOption>(
-    () => ({
-      textStyle: { fontFamily: tokens.font, color: tokens.ink },
-      grid: { left: 99, right: 28, top: 8, bottom: 20 },
-      tooltip: {
-        ...aresTooltip(tokens),
-        trigger: "axis",
-        axisPointer: { type: "shadow" },
-      },
-      xAxis: {
-        ...valueAxis(tokens),
-        max: Math.max(items.length, 1),
-        splitNumber: 3,
-      },
-      yAxis: {
-        ...categoryAxis(
+  // SLA colour is reserved status, never a series hue, so each row keeps its own.
+  const slaChart = useCallback(
+    (form: ChartForm) => (
+      <AresChart
+        formKey={form}
+        option={magnitudeOption(
+          form,
+          {
+            rows: sla,
+            measure: "Oportunidades",
+            format: (value) => `${value}`,
+            base: tokens.aco,
+            describe: (row) =>
+              row.label === "Vencido"
+                ? "Já passou do prazo acordado; exige resposta agora."
+                : row.label === "Próximas 24h"
+                  ? "Vence dentro de 24 horas."
+                  : row.label === "Sem prazo válido"
+                    ? "O CRM não informou um prazo utilizável."
+                    : "Fora da janela crítica.",
+          },
           tokens,
-          sla.map((item) => item.label),
-        ),
-        inverse: true,
-        axisLine: { show: false },
-        axisLabel: {
-          color: tokens.ink2,
-          fontSize: 11,
-          width: 91,
-          overflow: "truncate",
-        },
-      },
-      series: [
-        {
-          id: "sla-window",
-          name: "Oportunidades",
-          type: "bar",
-          barWidth: 15,
-          showBackground: true,
-          backgroundStyle: {
-            color: tokens.well,
-            borderColor: tokens.edgeDark,
-            borderWidth: 1,
-            borderRadius: tokens.radius,
-          },
-          label: {
-            show: true,
-            position: "right",
-            color: tokens.ink,
-            fontSize: 11,
-            fontWeight: 650,
-          },
-          data: sla.map((item) => ({
-            name: item.label,
-            value: item.value,
-            itemStyle: {
-              ...raisedBar(item.color, tokens),
-              borderRadius: tokens.radius,
-            },
-          })),
-          emphasis: raisedBarEmphasis(tokens),
-        },
-      ],
-    }),
-    [sla, tokens, items.length],
+        )}
+        label="Oportunidades com SLA vencido, próximas 24h, após 24h e sem prazo válido"
+      />
+    ),
+    [sla, tokens],
   );
 
   const stagePartial = knownValues.partial || missingCurrency > 0;
@@ -376,6 +300,9 @@ export function RadarIntelligenceCharts({
             </select>
           ) : undefined
         }
+        forms={STAGE_FORMS}
+        formKey="radar-stage"
+        renderForm={stageChart}
         table={
           <ChartDataTable
             title="Exposição por etapa"
@@ -384,18 +311,7 @@ export function RadarIntelligenceCharts({
             format={(value) => money(value, currency)}
           />
         }
-      >
-        <AresChart
-          option={stageOption}
-          label={`Valor observado por etapa, em ${currency}`}
-          physicalAxis
-        />
-        <ChartLegend
-          rows={stageRows}
-          format={(value) => money(value, currency)}
-          compact
-        />
-      </ChartFrame>
+      />
       <ChartFrame
         {...metadata}
         className="chart-signals"
@@ -405,6 +321,9 @@ export function RadarIntelligenceCharts({
         period="Fila no recorte atual"
         attribution="Sinal observado; sem causalidade"
         hasData={items.length > 0}
+        forms={SIGNAL_FORMS}
+        formKey="radar-signals"
+        renderForm={signalChart}
         table={
           <ChartDataTable
             title="Sinais dominantes"
@@ -412,10 +331,7 @@ export function RadarIntelligenceCharts({
             unit="Oportunidades"
           />
         }
-      >
-        <AresChart option={signalOption} label="Oportunidades por sinal principal, em ordem de frequência" />
-        <p className="chart-reading-note">Cada oportunidade entra uma vez, pelo sinal principal.</p>
-      </ChartFrame>
+      />
       <ChartFrame
         {...metadata}
         className="chart-sla"
@@ -424,6 +340,9 @@ export function RadarIntelligenceCharts({
         unit="Oportunidades"
         period="Agora / próximas 24 horas"
         hasData={items.length > 0}
+        forms={SLA_FORMS}
+        formKey="radar-sla"
+        renderForm={slaChart}
         table={
           <ChartDataTable
             title="Janela de SLA"
@@ -431,13 +350,7 @@ export function RadarIntelligenceCharts({
             unit="Oportunidades"
           />
         }
-      >
-        <AresChart
-          option={slaOption}
-          label="Oportunidades com SLA vencido, próximas 24h, após 24h e sem prazo válido"
-        />
-        <ChartLegend rows={sla} compact />
-      </ChartFrame>
+      />
     </section>
   );
 }

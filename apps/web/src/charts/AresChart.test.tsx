@@ -20,11 +20,15 @@ vi.mock("echarts/charts", () => ({
   BarChart: {},
   LineChart: {},
   PieChart: {},
+  FunnelChart: {},
+  TreemapChart: {},
 }));
 vi.mock("echarts/components", () => ({
   GraphicComponent: {},
   GridComponent: {},
   TooltipComponent: {},
+  LegendComponent: {},
+  MarkLineComponent: {},
 }));
 vi.mock("echarts/renderers", () => ({ SVGRenderer: {} }));
 

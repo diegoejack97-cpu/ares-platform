@@ -26,6 +26,8 @@ export function readThemeTokens() {
     bevelLit: Number.parseFloat(token("--bevel-lit")) || 0.19,
     bevelShade: Number.parseFloat(token("--bevel-shade")) || 0.26,
     contour: Number.parseFloat(token("--plot-contour")) || 0.34,
+    rampLit: Number.parseFloat(token("--ramp-lit")) || 0.51,
+    rampShade: Number.parseFloat(token("--ramp-shade")) || 0.44,
     lift: Number.parseFloat(token("--plot-lift")) || 3,
     liftHover: Number.parseFloat(token("--plot-lift-hover")) || 5,
   };
@@ -166,6 +168,37 @@ export function raisedBar(base: string, tokens: AresThemeTokens) {
     shadowOffsetY: tokens.lift,
     shadowBlur: 0,
   };
+}
+
+/**
+ * Ordered categories — funnel stages, tiers, buckets — take one hue in monotone
+ * steps, so the reader sees the order in the colour. Nominal categories must not
+ * use this: colouring a bar by its own value spends the identity channel on what
+ * the bar length already shows.
+ */
+export function ordinalRamp(
+  base: string,
+  count: number,
+  tokens: AresThemeTokens,
+) {
+  if (count <= 1) return [base];
+  const span = tokens.rampLit + tokens.rampShade;
+  return Array.from({ length: count }, (_, index) => {
+    const amount = tokens.rampLit - (index / (count - 1)) * span;
+    return amount >= 0 ? tint(base, amount) : shade(base, -amount);
+  });
+}
+
+/** One series is the point and the rest are context: accent it, recede the others. */
+export function emphasisRamp(
+  base: string,
+  count: number,
+  focusIndex: number,
+  tokens: AresThemeTokens,
+) {
+  return Array.from({ length: count }, (_, index) =>
+    index === focusIndex ? base : tokens.aco,
+  );
 }
 
 /** The hover step is the next rung of the same ramp, never an arbitrary jump. */
