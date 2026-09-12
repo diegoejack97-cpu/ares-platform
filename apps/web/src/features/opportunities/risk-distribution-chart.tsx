@@ -12,6 +12,7 @@ import {
   aresTooltip,
   categoryAxis,
   raisedBar,
+  raisedBarEmphasis,
   useThemeTokens,
   valueAxis,
 } from "@/charts/aresTheme";
@@ -85,7 +86,7 @@ export function RiskDistributionChart({
             value: item.value,
             itemStyle: raisedBar(item.color, tokens),
           })),
-          emphasis: { itemStyle: { shadowOffsetY: 4, shadowBlur: 0 } },
+          emphasis: raisedBarEmphasis(tokens),
         },
       ],
     }),

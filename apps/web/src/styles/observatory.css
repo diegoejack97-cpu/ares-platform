@@ -237,7 +237,8 @@ body {
   min-height: 34px;
   height: 34px;
 }
-.app-shell .theme-toggle svg {
+.app-shell .theme-toggle svg,
+.app-shell .mobile-menu svg {
   width: 18px;
   height: 18px;
 }
@@ -332,14 +333,19 @@ body {
   padding: 12px;
 }
 .workspace .chart-plot {
+  /* The plot is an instrument well: recessed, lit from above, floored at the axis. */
+  background: var(--well);
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--edge) 12%, transparent),
-    transparent 50%
+    color-mix(in srgb, var(--edge-dark) 34%, transparent),
+    transparent 38%
   );
   border: 1px solid var(--edge-dark);
   border-bottom-color: var(--edge-hi);
-  box-shadow: inset 0 3px 7px #00000024;
+  border-radius: var(--r-sm);
+  box-shadow:
+    inset 0 3px 7px #00000038,
+    inset 0 -1px 0 var(--edge-hi);
 }
 .workspace .chart-frame-footer {
   border-top: 1px solid var(--edge);
@@ -480,7 +486,6 @@ body {
 .workspace :is(input, select, textarea) { border-color: var(--edge); border-radius: var(--control-radius); box-shadow: inset 0 1px 2px #00000018; }
 .workspace :is([data-slot="badge"], .priority-pill, .lab-scenario) { border-radius: 3px; box-shadow: none; }
 .workspace :is(.chart-frame-heading p, .chart-frame-context, .chart-frame-footer, .chart-frame-footer .chart-attribution) { font-size: var(--type-label); }
-.workspace .chart-plot { border: 0; border-radius: 0; background: transparent; background-image: none; box-shadow: none; }
 .workspace .chart-frame-body { padding: 8px 12px 12px; }
 .workspace .chart-frame-header { padding: 16px 20px 0; }
 .workspace .chart-frame-heading h2::before { display: none; }

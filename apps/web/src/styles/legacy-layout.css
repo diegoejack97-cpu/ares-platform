@@ -663,28 +663,8 @@ h1 {
   .login-card {
     min-height: 100vh;
   }
-  .app-shell {
-    display: block;
-  }
-  .sidebar {
-    position: static;
-    height: auto;
-  }
-  .sidebar nav,
-  .product-label {
-    display: none;
-  }
-  .sidebar-foot {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    border: 0;
-  }
   .brand {
     min-height: 60px;
-  }
-  .topbar {
-    display: none;
   }
   .workspace {
     padding: 22px 16px;

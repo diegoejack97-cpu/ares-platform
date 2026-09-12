@@ -21,6 +21,10 @@
   --e-press: 0 0 0 var(--edge-dark);
   --rail-shadow: 12px 0 24px -16px #000000cc;
   --bevel-top: #ffffff30; --bevel-bot: #00000042;
+  /* Numeric half of the bevel, for renderers that cannot read a CSS colour: same ratio as --bevel-top/--bevel-bot. */
+  --bevel-lit: 0.19; --bevel-shade: 0.26; --plot-contour: 0.34;
+  /* Series elevation, in px, on the same 3/5 lip ramp the panels use. */
+  --plot-lift: 3; --plot-lift-hover: 5;
   --button-ink: #10151b; --on-solid: #ffffff;
   --background: var(--bg); --foreground: var(--ink); --card: var(--panel); --card-foreground: var(--ink);
   --popover: var(--raised-hi); --popover-foreground: var(--ink); --primary: var(--brasa); --primary-foreground: var(--button-ink);
@@ -51,5 +55,7 @@
   --e-3: 0 4px 0 var(--edge-dark), 0 16px 24px -16px #00000066;
   --rail-shadow: 12px 0 24px -16px #00000066;
   --bevel-top: #ffffff66; --bevel-bot: #00000024; --button-ink: #ffffff;
+  /* Light inverts the ratio: a strong top highlight, a soft underside. */
+  --bevel-lit: 0.40; --bevel-shade: 0.14; --plot-contour: 0.26;
   color-scheme: light;
 }

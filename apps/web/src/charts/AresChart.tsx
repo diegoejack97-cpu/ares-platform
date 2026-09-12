@@ -65,10 +65,19 @@ export const AresChart = memo(function AresChart({
       );
     };
     motion.addEventListener("change", render);
-    const resize = new ResizeObserver(() => chart.resize());
+    // The rail animates the grid track for 380ms, so coalesce that burst into one resize per frame.
+    let frame = 0;
+    const resize = new ResizeObserver(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (!chart.isDisposed()) chart.resize();
+      });
+    });
     resize.observe(host);
     return () => {
       motion.removeEventListener("change", render);
+      if (frame) cancelAnimationFrame(frame);
       resize.disconnect();
       chartRef.current = null;
       chart.dispose();

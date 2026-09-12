@@ -37,6 +37,11 @@ vi.mock("@/charts/aresTheme", () => {
     aco: "currentColor",
     lilas: "currentColor",
     radius: 3,
+    bevelLit: 0.19,
+    bevelShade: 0.26,
+    contour: 0.34,
+    lift: 3,
+    liftHover: 5,
   };
   return {
     useThemeTokens: () => tokens,
@@ -45,6 +50,9 @@ vi.mock("@/charts/aresTheme", () => {
     categoryAxis: (_tokens: unknown, data: string[]) => ({ data }),
     categoryColor: () => "currentColor",
     raisedBar: () => ({}),
+    raisedBarEmphasis: () => ({}),
+    shade: (value: string) => value,
+    tint: (value: string) => value,
     valueAxis: () => ({}),
   };
 });

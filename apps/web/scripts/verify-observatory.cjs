@@ -42,23 +42,40 @@ const output = path.resolve(
     await page.mouse.click(900, 80);
     const sidebar = page.locator(".sidebar");
     await expect(sidebar).toHaveAttribute("data-expanded", "false");
+    const rail = await page.evaluate(() => {
+      const styles = getComputedStyle(document.documentElement);
+      return {
+        closed: Number.parseInt(styles.getPropertyValue("--rail-w"), 10),
+        open: Number.parseInt(styles.getPropertyValue("--rail-w-open"), 10),
+      };
+    });
     const before = await page.locator(".page-header").boundingBox();
+    expect(Math.round((await sidebar.boundingBox()).width)).toBe(rail.closed);
+
+    // Hover must not open the rail: an accidental pass of the mouse cannot reflow the workspace.
     await sidebar.hover();
-    await expect(sidebar).toHaveAttribute("data-expanded", "true");
-    await sidebar.getByRole("link", { name: /Radar ARES/ }).click();
-    await page.mouse.move(800, 100);
-    await expect(sidebar).toHaveAttribute("data-expanded", "true");
-    const during = await page.locator(".page-header").boundingBox();
-    expect(during.x).toBe(before.x);
-    await page.mouse.click(900, 80);
     await expect(sidebar).toHaveAttribute("data-expanded", "false");
+    const hovered = await page.locator(".page-header").boundingBox();
+    expect(hovered.x).toBe(before.x);
+
+    // Opening is deliberate, and it pushes the workspace instead of covering it.
+    await page.getByRole("button", { name: "Abrir menu", exact: true }).click();
+    await expect(sidebar).toHaveAttribute("data-expanded", "true");
+    expect(Math.round((await sidebar.boundingBox()).width)).toBe(rail.open);
+    const opened = await page.locator(".page-header").boundingBox();
+    expect(Math.round(opened.x - before.x)).toBe(rail.open - rail.closed);
+
+    await page.getByRole("button", { name: "Recolher menu" }).first().click();
+    await expect(sidebar).toHaveAttribute("data-expanded", "false");
+    const restored = await page.locator(".page-header").boundingBox();
+    expect(restored.x).toBe(before.x);
+
     await sidebar.getByRole("link", { name: /Radar ARES/ }).focus();
     await expect(sidebar).toHaveAttribute("data-expanded", "true");
     await page.keyboard.press("Escape");
     await expect(sidebar).toHaveAttribute("data-expanded", "false");
-    expect(Math.round((await sidebar.boundingBox()).width)).toBe(76);
     results.push({
-      check: "menu: hover / fixar / fora / teclado / Escape / sem deslocamento",
+      check: "menu: hover inerte / clique empurra / teclado / Escape",
       ok: true,
     });
 
@@ -165,9 +182,15 @@ const output = path.resolve(
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("button", { name: "Abrir menu", exact: true }).click();
     await expect(sidebar).toHaveAttribute("data-expanded", "true");
+    // Narrow screens get an overlay drawer, so the page behind it must be covered and locked.
+    await expect(page.locator(".sidebar-scrim")).toBeVisible();
+    expect(
+      await page.evaluate(() => getComputedStyle(document.body).overflow),
+    ).toBe("hidden");
     await page.keyboard.press("Escape");
     await expect(sidebar).toHaveAttribute("data-expanded", "false");
-    results.push({ check: "menu mobile abre e recolhe", ok: true });
+    await expect(page.locator(".sidebar-scrim")).toHaveCount(0);
+    results.push({ check: "menu mobile: drawer, scrim e trava de rolagem", ok: true });
     expect(errors).toEqual([]);
     expect(
       results.filter(

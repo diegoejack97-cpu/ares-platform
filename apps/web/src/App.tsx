@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -45,9 +46,12 @@ const PipelinePage = lazy(() =>
 function App() {
   const { session, signOut } = useAuth();
   const sidebarRef = useRef<HTMLElement>(null);
-  const [sidebarPinned, setSidebarPinned] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarFocused, setSidebarFocused] = useState(false);
+  // Below this width the rail has no room to push, so it becomes an overlay drawer.
+  const [compact, setCompact] = useState(
+    () => window.matchMedia?.("(max-width: 600px)").matches ?? false,
+  );
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     let stored: string | null = null;
     try {
@@ -60,7 +64,8 @@ function App() {
       ? "dark"
       : "light";
   });
-  const sidebarExpanded = sidebarPinned || sidebarHovered || sidebarFocused;
+  // Opening is deliberate: a click, or keyboard focus reaching the rail. Hover never reflows the page.
+  const sidebarExpanded = menuOpen || sidebarFocused;
   const now = useLiveClock();
   const radar = useQuery({
     queryKey: ["opportunities", "", 0],
@@ -88,18 +93,27 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 600px)");
+    if (!query) return;
+    const sync = (event: MediaQueryListEvent) => setCompact(event.matches);
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    setSidebarFocused(false);
+  }, []);
+
+  useEffect(() => {
+    // The pushed rail is part of the layout, so only the overlay drawer is dismissed by clicking away.
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!sidebarRef.current?.contains(event.target as Node)) {
-        setSidebarPinned(false);
-        setSidebarHovered(false);
-        setSidebarFocused(false);
-      }
+      if (!compact) return;
+      if (!sidebarRef.current?.contains(event.target as Node)) closeMenu();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setSidebarPinned(false);
-      setSidebarHovered(false);
-      setSidebarFocused(false);
+      closeMenu();
       if (sidebarRef.current?.contains(document.activeElement))
         (document.activeElement as HTMLElement)?.blur();
     };
@@ -109,20 +123,32 @@ function App() {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, []);
+  }, [compact, closeMenu]);
+
+  // The drawer covers the page on small screens; the page behind it must not scroll.
+  useEffect(() => {
+    if (!compact || !sidebarExpanded) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [compact, sidebarExpanded]);
 
   return (
-    <div className="app-shell" data-sidebar-expanded={sidebarExpanded}>
+    <div
+      className="app-shell"
+      data-sidebar-expanded={sidebarExpanded}
+      data-sidebar-overlay={compact}
+    >
+      {compact && sidebarExpanded ? (
+        <div className="sidebar-scrim" onPointerDown={closeMenu} aria-hidden />
+      ) : null}
       <aside
         ref={sidebarRef}
+        id="ares-sidebar"
         className="sidebar"
         data-expanded={sidebarExpanded}
-        onMouseEnter={() => setSidebarHovered(true)}
-        onMouseLeave={() => setSidebarHovered(false)}
-        onClick={(event) => {
-          if (!(event.target as HTMLElement).closest(".sidebar-pin"))
-            setSidebarPinned(true);
-        }}
         onFocusCapture={() => setSidebarFocused(true)}
         onBlurCapture={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget))
@@ -141,21 +167,13 @@ function App() {
           <button
             className="sidebar-pin"
             type="button"
-            aria-label={sidebarPinned ? "Menu fixado" : "Fixar menu aberto"}
-            aria-pressed={sidebarPinned}
-            title={sidebarPinned ? "Clique fora para recolher" : "Fixar menu"}
-            onClick={() => {
-              setSidebarPinned(!sidebarPinned);
-              if (sidebarPinned) {
-                setSidebarFocused(false);
-                setSidebarHovered(false);
-              }
-            }}
+            aria-label="Recolher menu"
+            aria-expanded={sidebarExpanded}
+            aria-controls="ares-sidebar"
+            title="Recolher menu"
+            onClick={closeMenu}
           >
-            <SidebarSimpleIcon
-              weight={sidebarPinned ? "fill" : "bold"}
-              aria-hidden
-            />
+            <SidebarSimpleIcon weight="fill" aria-hidden />
           </button>
         </div>
         <div className="product-label sidebar-copy">
@@ -241,9 +259,14 @@ function App() {
           <button
             className="mobile-menu"
             type="button"
-            aria-label="Abrir menu"
+            aria-label={sidebarExpanded ? "Recolher menu" : "Abrir menu"}
             aria-expanded={sidebarExpanded}
-            onClick={() => setSidebarPinned(true)}
+            aria-controls="ares-sidebar"
+            title={sidebarExpanded ? "Recolher menu" : "Abrir menu"}
+            onClick={() => {
+              if (sidebarExpanded) closeMenu();
+              else setMenuOpen(true);
+            }}
           >
             <ListIcon aria-hidden />
           </button>

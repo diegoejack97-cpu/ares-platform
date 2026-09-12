@@ -95,7 +95,7 @@ export function EventActivityChart({
             color: tokens.jade,
             width: 2.5,
             shadowColor: tokens.edgeDark,
-            shadowOffsetY: 2,
+            shadowOffsetY: tokens.lift,
             shadowBlur: 0,
           },
           itemStyle: {
@@ -103,7 +103,7 @@ export function EventActivityChart({
             borderColor: tokens.edgeDark,
             borderWidth: 1.5,
             shadowColor: tokens.edgeDark,
-            shadowOffsetY: 2,
+            shadowOffsetY: tokens.lift,
             shadowBlur: 0,
           },
           areaStyle: { color: areaFill(tokens.jade) },

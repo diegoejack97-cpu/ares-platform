@@ -23,7 +23,37 @@ export function readThemeTokens() {
     aco: token("--aco"),
     lilas: token("--lilas"),
     radius: Number.parseFloat(token("--r-sm")) || 0,
+    bevelLit: Number.parseFloat(token("--bevel-lit")) || 0.19,
+    bevelShade: Number.parseFloat(token("--bevel-shade")) || 0.26,
+    contour: Number.parseFloat(token("--plot-contour")) || 0.34,
+    lift: Number.parseFloat(token("--plot-lift")) || 3,
+    liftHover: Number.parseFloat(token("--plot-lift-hover")) || 5,
   };
+}
+
+/**
+ * zrender's lift() brightens at every level — a negative level multiplies each
+ * channel by (1 - level), so lift(base, -0.22) returns a colour 22% lighter.
+ * Darkening therefore needs its own helper.
+ */
+export function shade(base: string, amount: number) {
+  const parsed = color.parse(base);
+  if (!parsed) return base;
+  const scale = 1 - amount;
+  return color.stringify(
+    [
+      Math.round(parsed[0] * scale),
+      Math.round(parsed[1] * scale),
+      Math.round(parsed[2] * scale),
+      parsed[3] ?? 1,
+    ],
+    "rgba",
+  );
+}
+
+/** Toward white. Positive lift() is a genuine tint, so it is kept. */
+export function tint(base: string, amount: number) {
+  return color.lift(base, amount);
 }
 
 export type AresThemeTokens = ReturnType<typeof readThemeTokens>;
@@ -114,24 +144,34 @@ export function aresTooltip(tokens: AresThemeTokens) {
   };
 }
 
-export function bevelFill(base: string) {
+/**
+ * One light source, above. The ramp spans the full height so it is resolvable on a
+ * 15px bar, and its strength comes from the theme so light and dark stay siblings.
+ */
+export function bevelFill(base: string, tokens: AresThemeTokens) {
   return new graphic.LinearGradient(0, 0, 0, 1, [
-    { offset: 0, color: color.lift(base, 0.12) },
-    { offset: 0.08, color: color.lift(base, 0.04) },
-    { offset: 0.45, color: base },
-    { offset: 1, color: color.lift(base, -0.08) },
+    { offset: 0, color: tint(base, tokens.bevelLit) },
+    { offset: 0.42, color: base },
+    { offset: 1, color: shade(base, tokens.bevelShade) },
   ]);
 }
 
 export function raisedBar(base: string, tokens: AresThemeTokens) {
   return {
-    color: bevelFill(base),
-    borderColor: color.lift(base, -0.22),
+    color: bevelFill(base, tokens),
+    borderColor: shade(base, tokens.contour),
     borderWidth: 1,
     borderRadius: [tokens.radius, tokens.radius, 0, 0],
     shadowColor: tokens.edgeDark,
-    shadowOffsetY: 1,
+    shadowOffsetY: tokens.lift,
     shadowBlur: 0,
+  };
+}
+
+/** The hover step is the next rung of the same ramp, never an arbitrary jump. */
+export function raisedBarEmphasis(tokens: AresThemeTokens) {
+  return {
+    itemStyle: { shadowOffsetY: tokens.liftHover, shadowBlur: 0 },
   };
 }
 

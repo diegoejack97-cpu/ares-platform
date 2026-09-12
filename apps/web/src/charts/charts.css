@@ -111,14 +111,16 @@
   font-variant-numeric: tabular-nums;
 }
 .chart-physical-axis::after {
+  /* A cut line, not a highlight: dark edge with a lit lip under it, so it reads in both themes. */
   content: "";
   position: absolute;
   pointer-events: none;
   height: 1px;
-  background: var(--edge-hi);
-  bottom: 26px;
-  left: 34px;
-  right: 10px;
+  background: var(--edge-dark);
+  box-shadow: 0 1px 0 var(--edge-hi);
+  bottom: var(--plot-floor-bottom, 26px);
+  left: var(--plot-floor-left, 34px);
+  right: var(--plot-floor-right, 10px);
 }
 .chart-frame .chart-donut-layout {
   display: grid;
