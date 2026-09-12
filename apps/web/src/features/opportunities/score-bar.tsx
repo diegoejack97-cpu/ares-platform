@@ -1,11 +1,11 @@
-import type { ScoreBreakdown } from "./types";
+import type { Numeric, ScoreBreakdown } from "./types";
 import { finiteNumber } from "@/lib/numbers";
 
 export function ScoreBar({
   score,
   breakdown,
 }: {
-  score: number;
+  score: Numeric;
   breakdown: ScoreBreakdown;
 }) {
   const numeric = finiteNumber(score);

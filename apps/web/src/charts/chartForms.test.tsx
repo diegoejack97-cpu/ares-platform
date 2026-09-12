@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChartFrame } from "./ChartFrame";
 import { ordinalRamp, shade, tint, type AresThemeTokens } from "./aresTheme";
+import { finiteNumber } from "@/lib/numbers";
 import type { ChartForm } from "./chartForms";
 
 afterEach(() => {
@@ -108,5 +109,34 @@ describe("colour ramps", () => {
     });
     for (let index = 1; index < values.length; index += 1)
       expect(values[index]).toBeLessThan(values[index - 1]);
+  });
+});
+
+describe("numeric coercion at the API boundary", () => {
+  // The API serialises Postgres numerics with default=str, so deal_value and
+  // score arrive as strings. Number.isFinite on the raw field silently drops
+  // every row, which is how the score-against-value matrix shipped empty.
+  it("keeps rows whose numerics arrive as strings", () => {
+    const rows = [
+      { deal_value: "125000.00", score: "0.92" },
+      { deal_value: "0.00", score: "0.31" },
+      { deal_value: null, score: "0.5" },
+    ];
+    const points = rows
+      .map((row) => {
+        const value = finiteNumber(row.deal_value);
+        const score = finiteNumber(row.score);
+        return value === null || score === null ? null : { value, score };
+      })
+      .filter(Boolean);
+
+    expect(points).toHaveLength(2);
+    expect(points[0]).toEqual({ value: 125000, score: 0.92 });
+    expect(rows.filter((row) => Number.isFinite(row.deal_value))).toHaveLength(0);
+  });
+
+  it("reads score as a 0..1 fraction, not a percentage", () => {
+    expect(finiteNumber("0.92")).toBeLessThanOrEqual(1);
+    expect((finiteNumber("0.92") ?? 0) * 100).toBeCloseTo(92);
   });
 });

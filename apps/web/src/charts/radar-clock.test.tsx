@@ -73,7 +73,7 @@ describe("Radar clock redraw boundaries", () => {
         id: "clock-fixture",
         external_stage: "Proposta",
         currency: "BRL",
-        deal_value: 1000,
+        deal_value: "1000.00",
         primary_signal_type: "follow_up_overdue",
         sla_at: new Date(now + 5000).toISOString(),
       },

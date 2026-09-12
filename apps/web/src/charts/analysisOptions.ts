@@ -88,7 +88,9 @@ export function trendOption(
       name: entry.label,
       type: "line",
       data: entry.points,
-      showSymbol: false,
+      // A sparse series must show its observations: joining four points with a
+      // bare line reads as a trend the data does not support.
+      showSymbol: entry.points.length <= 12,
       symbolSize: 8,
       smooth: false,
       lineStyle: {

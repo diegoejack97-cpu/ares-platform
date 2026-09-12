@@ -14,7 +14,7 @@ import {
   trendOption,
 } from "@/charts/analysisOptions";
 import type { ChartForm } from "@/charts/chartForms";
-import { safeSum } from "@/lib/numbers";
+import { finiteNumber, safeSum } from "@/lib/numbers";
 
 import { money, signalLabels } from "./format";
 import type { OpportunityListItem } from "./types";
@@ -223,23 +223,36 @@ export function RadarIntelligenceCharts({
   const matrix = useMemo(
     () =>
       currencyItems
-        .filter((item) => Number.isFinite(item.deal_value))
-        .map((item) => ({
-          id: item.id,
-          label: item.title,
-          x: item.score,
-          y: item.deal_value,
-          color:
-            item.sla_at && Date.parse(item.sla_at) <= now
-              ? tokens.brasa
-              : tokens.aco,
-          detail:
-            item.sla_at && Date.parse(item.sla_at) <= now
+        .map((item) => {
+          // Both arrive as strings from the API; the score is a 0..1 fraction.
+          const value = finiteNumber(item.deal_value);
+          const score = finiteNumber(item.score);
+          if (value === null || score === null) return null;
+          const overdue = item.sla_at ? Date.parse(item.sla_at) <= now : false;
+          return {
+            id: item.id,
+            label: item.title,
+            x: score * 100,
+            y: value,
+            color: overdue ? tokens.brasa : tokens.aco,
+            detail: overdue
               ? "SLA vencido"
               : (item.external_stage ?? "Sem etapa"),
-        })),
+          };
+        })
+        .filter((point): point is NonNullable<typeof point> => point !== null),
     [currencyItems, now, tokens],
   );
+
+  /** Money is skewed, so the split uses the median rather than the mean. */
+  const medianValue = useMemo(() => {
+    if (matrix.length === 0) return 0;
+    const sorted = [...matrix].map((point) => point.y).sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  }, [matrix]);
 
   const agingChart = useCallback(
     (form: ChartForm) => (
@@ -309,11 +322,8 @@ export function RadarIntelligenceCharts({
             formatY: (value) => money(value, currency),
             divider: {
               x: 50,
-              y:
-                matrix.length > 0
-                  ? matrix.reduce((sum, point) => sum + point.y, 0) / matrix.length
-                  : 0,
-              quadrant: "Score alto · valor acima da média",
+              y: medianValue,
+              quadrant: "Score alto · valor acima da mediana",
             },
           },
           tokens,
@@ -321,7 +331,7 @@ export function RadarIntelligenceCharts({
         label="Relação entre score e valor do negócio, por oportunidade"
       />
     ),
-    [matrix, tokens, currency],
+    [matrix, medianValue, tokens, currency],
   );
 
   // Stages are ordered, so their colour is one hue in monotone steps and the
@@ -585,7 +595,7 @@ export function RadarIntelligenceCharts({
             rows={matrix.map((point) => ({
               label: point.label,
               value: point.y,
-              detail: `Score ${Math.round(point.x)}`,
+              detail: `Score ${Math.round(point.x)} de 100`,
             }))}
             unit={currency}
             format={(value) => money(value, currency)}

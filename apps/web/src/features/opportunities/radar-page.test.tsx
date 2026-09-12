@@ -26,7 +26,8 @@ test("renders intelligence context and reveals the priority queue in batches of 
   const baseItem = {
     opportunity_type: "revenue_recovery",
     state: "prioritized",
-    score: 0.92,
+    // The API serialises numerics as strings; the fixture must match.
+    score: "0.92",
     priority: 0,
     owner_user_id: null,
     sla_at: "2026-09-02T16:00:00Z",
@@ -41,7 +42,7 @@ test("renders intelligence context and reveals the priority queue in batches of 
     deal_id: "deal",
     external_id: "crm-42",
     external_stage: "proposal",
-    deal_value: 125000,
+    deal_value: "125000.00",
     currency: "BRL",
     last_activity_at: "2026-09-02T12:00:00Z",
   };

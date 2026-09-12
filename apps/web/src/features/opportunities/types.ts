@@ -6,11 +6,19 @@ export interface ScorePart {
 
 export type ScoreBreakdown = Record<string, ScorePart>;
 
+/**
+ * Postgres numerics reach the client as strings: the API serialises with
+ * `default=str` (intelligence/service.py). Read them through finiteNumber,
+ * never with Number.isFinite on the raw field.
+ */
+export type Numeric = number | string;
+
 export interface OpportunityListItem {
   id: string;
   opportunity_type: string;
   state: string;
-  score: number;
+  /** 0..1, not 0..100. */
+  score: Numeric;
   priority: number;
   owner_user_id: string | null;
   sla_at: string | null;
@@ -26,7 +34,7 @@ export interface OpportunityListItem {
   title: string;
   external_id: string;
   external_stage: string | null;
-  deal_value: number;
+  deal_value: Numeric;
   currency: string;
   last_activity_at: string | null;
 }
@@ -119,7 +127,7 @@ export interface ApprovalItem extends Recommendation {
   expires_at: string;
   created_at: string;
   title: string;
-  deal_value: number;
+  deal_value: Numeric;
   currency: string;
 }
 
