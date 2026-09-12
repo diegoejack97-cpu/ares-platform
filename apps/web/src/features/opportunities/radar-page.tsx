@@ -26,7 +26,7 @@ import { SlaCountdown } from "@/components/live/sla-countdown";
 import { useLiveClock } from "@/lib/live-clock";
 import { safeSum } from "@/lib/numbers";
 import { AresMark } from "@/components/ares-mark";
-import { getOpportunities } from "./api";
+import { getOpportunities, getOpportunityAnalytics } from "./api";
 import { money, signalLabels } from "./format";
 import { RiskDistributionChart } from "./risk-distribution-chart";
 import { ScoreBar } from "./score-bar";
@@ -63,6 +63,12 @@ export function RadarPage() {
   const [visibleCount, setVisibleCount] = useState(ROW_BATCH);
   const tableWrapRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  // The charts describe the whole tenant, not the page the table happens to show.
+  const analytics = useQuery({
+    queryKey: ["opportunity-analytics"],
+    queryFn: getOpportunityAnalytics,
+    refetchInterval: 30_000,
+  });
   const query = useQuery({
     queryKey: ["opportunities", state, minScore],
     queryFn: () =>
@@ -378,12 +384,17 @@ export function RadarPage() {
       {items.length > 0 ? (
         <Suspense fallback={<IntelligenceSkeleton />}>
           <RadarIntelligenceCharts
-            items={items}
-            now={now}
-            freshness={query.dataUpdatedAt}
-            source={query.data?.source}
-            state={chartState}
-            onRetry={() => void query.refetch()}
+            analytics={analytics.data}
+            freshness={analytics.dataUpdatedAt}
+            source={analytics.data?.source}
+            state={
+              analytics.isError
+                ? "error"
+                : analytics.isPending
+                  ? "loading"
+                  : chartState
+            }
+            onRetry={() => void analytics.refetch()}
           />
         </Suspense>
       ) : null}

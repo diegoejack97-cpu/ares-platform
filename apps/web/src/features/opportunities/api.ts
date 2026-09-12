@@ -1,8 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import type {
-  ContextSnapshot,
   ActionDraft,
   ApprovalPage,
+  ContextSnapshot,
+  OpportunityAnalytics,
   OpportunityDetail,
   OpportunityPage,
 } from "./types";
@@ -88,4 +89,8 @@ export function decideRecommendation(
 
 export function getApprovals(): Promise<ApprovalPage> {
   return request("/api/v1/approvals");
+}
+
+export function getOpportunityAnalytics(): Promise<OpportunityAnalytics> {
+  return request("/api/v1/opportunities/analytics");
 }

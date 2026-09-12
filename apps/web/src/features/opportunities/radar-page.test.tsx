@@ -46,20 +46,39 @@ test("renders intelligence context and reveals the priority queue in batches of 
     currency: "BRL",
     last_activity_at: "2026-09-02T12:00:00Z",
   };
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(
-      JSON.stringify({
-        items: Array.from({ length: 7 }, (_, index) => ({
-          ...baseItem,
-          id: `op-${index + 1}`,
-          title:
-            index === 0 ? "Expansão Serra Metais" : `Oportunidade ${index + 1}`,
-        })),
-        next_cursor: null,
-        source: "ARES Core / Supabase local",
-        freshness_at: "2026-09-02T12:00:00Z",
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+  const list = {
+    items: Array.from({ length: 7 }, (_, index) => ({
+      ...baseItem,
+      id: `op-${index + 1}`,
+      title:
+        index === 0 ? "Expansão Serra Metais" : `Oportunidade ${index + 1}`,
+    })),
+    next_cursor: null,
+    source: "ARES Core / Supabase local",
+    freshness_at: "2026-09-02T12:00:00Z",
+  };
+  const aggregate = {
+    stages: [],
+    signals: [],
+    sla: [],
+    opened: [],
+    activity: [],
+    rhythm: [],
+    points: [],
+    total: 7,
+    point_cap: 400,
+    source: "ARES Core / Supabase local",
+    freshness_at: "2026-09-02T12:00:00Z",
+  };
+  // A Response body reads once, so each call needs its own, routed by URL.
+  vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          String(input).includes("/analytics") ? aggregate : list,
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     ),
   );
   const client = new QueryClient({

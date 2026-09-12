@@ -505,6 +505,123 @@ class IntelligenceService:
             "freshness_at": datetime.now(UTC),
         }
 
+    async def opportunity_analytics(self) -> dict[str, Any]:
+        """Aggregates for the Radar charts.
+
+        Computed over every opportunity of the tenant rather than over one page,
+        so the charts, the table and any agent reading this all describe the same
+        population. The list endpoint caps at 100 rows and orders by urgency, so
+        aggregating client-side would silently describe only the busiest stage.
+        """
+        return await asyncio.to_thread(self._opportunity_analytics_sync)
+
+    def _opportunity_analytics_sync(self) -> dict[str, Any]:
+        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+            base = """
+                from public.ares_opportunities o
+                join public.deals d on d.tenant_id = o.tenant_id and d.id = o.deal_id
+                where o.tenant_id = %s
+            """
+            stages = connection.execute(
+                f"""
+                select coalesce(d.external_stage, 'Sem etapa') as label,
+                       count(*) as count,
+                       sum(d.value) filter (where d.value is not null) as total,
+                       count(*) filter (where d.value is null) as missing,
+                       d.currency
+                {base}
+                group by d.external_stage, d.currency
+                order by total desc nulls last
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            signals = connection.execute(
+                f"""
+                select coalesce(o.primary_signal_type, 'Sem sinal classificado') as label,
+                       count(*) as count
+                {base}
+                group by o.primary_signal_type
+                order by count desc
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            sla = connection.execute(
+                f"""
+                select case
+                         when o.sla_at is null then 'missing'
+                         when o.sla_at <= now() then 'overdue'
+                         when o.sla_at <= now() + interval '24 hours' then 'soon'
+                         else 'later'
+                       end as bucket,
+                       count(*) as count,
+                       sum(d.value) filter (where d.value is not null) as total
+                {base}
+                group by 1
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            opened = connection.execute(
+                f"""
+                select o.opened_at::date as day, count(*) as count
+                {base}
+                group by 1 order by 1
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            activity = connection.execute(
+                f"""
+                select d.last_activity_at::date as day, count(*) as count
+                {base} and d.last_activity_at is not null
+                group by 1 order by 1
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            rhythm = connection.execute(
+                f"""
+                with touched as (
+                  select coalesce(d.last_activity_at, o.opened_at) as at
+                  {base}
+                )
+                select extract(dow from at)::int as weekday,
+                       (extract(hour from at)::int / 6) as band,
+                       count(*) as count
+                from touched
+                group by 1, 2
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            # Capped: a scatter stops being readable long before it stops being drawable.
+            points = connection.execute(
+                f"""
+                select o.id, d.title, o.score, d.value as deal_value, d.currency,
+                       coalesce(d.external_stage, 'Sem etapa') as stage,
+                       (o.sla_at is not null and o.sla_at <= now()) as overdue
+                {base} and d.value is not null and o.score is not null
+                order by d.value desc
+                limit 400
+                """,
+                (self._tenant_id,),
+            ).fetchall()
+            total = connection.execute(
+                f"select count(*) as count {base}", (self._tenant_id,)
+            ).fetchone()
+
+        return _jsonable(
+            {
+                "stages": [dict(row) for row in stages],
+                "signals": [dict(row) for row in signals],
+                "sla": [dict(row) for row in sla],
+                "opened": [dict(row) for row in opened],
+                "activity": [dict(row) for row in activity],
+                "rhythm": [dict(row) for row in rhythm],
+                "points": [dict(row) for row in points],
+                "total": (total or {}).get("count", 0),
+                "point_cap": 400,
+                "source": "ARES Core / Supabase local",
+                "freshness_at": datetime.now(UTC),
+            }
+        )
+
     async def get_opportunity(self, opportunity_id: UUID) -> dict[str, Any] | None:
         return await asyncio.to_thread(self._get_opportunity_sync, opportunity_id)
 

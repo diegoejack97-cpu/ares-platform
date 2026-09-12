@@ -17,83 +17,151 @@ vi.mock("@/charts/AresChart", () => ({
   },
 }));
 vi.mock("@/charts/ChartFrame", () => ({
-  ChartFrame: ({ children }: { children: ReactNode }) => (
-    <section>{children}</section>
+  // The frame now renders a chosen form rather than fixed children.
+  ChartFrame: ({
+    children,
+    forms,
+    renderForm,
+    hasData = true,
+  }: {
+    children?: ReactNode;
+    forms?: readonly string[];
+    renderForm?: (form: string) => ReactNode;
+    hasData?: boolean;
+  }) => (
+    <section>
+      {hasData && renderForm ? renderForm(forms?.[0] ?? "column") : children}
+    </section>
   ),
   ChartDataTable: () => null,
   ChartLegend: () => null,
 }));
 vi.mock("@/components/live/live-value", () => ({ LiveValue: () => null }));
-vi.mock("@/charts/aresTheme", () => {
-  const tokens = {
-    font: "test",
-    ink: "currentColor",
-    ink2: "currentColor",
-    edgeDark: "currentColor",
-    well: "currentColor",
-    brasa: "currentColor",
-    ambar: "currentColor",
-    jade: "currentColor",
-    aco: "currentColor",
-    lilas: "currentColor",
-    radius: 3,
-    bevelLit: 0.19,
-    bevelShade: 0.26,
-    contour: 0.34,
-    lift: 3,
-    liftHover: 5,
-  };
+// Partial mock: only the token source is stubbed, so every real ramp and
+// gradient helper still runs and a new export cannot silently break the suite.
+vi.mock("@/charts/aresTheme", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/charts/aresTheme")>();
   return {
-    useThemeTokens: () => tokens,
-    aresTooltip: () => ({}),
-    bevelFill: (value: string) => value,
-    categoryAxis: (_tokens: unknown, data: string[]) => ({ data }),
-    categoryColor: () => "currentColor",
-    raisedBar: () => ({}),
-    raisedBarEmphasis: () => ({}),
-    shade: (value: string) => value,
-    tint: (value: string) => value,
-    valueAxis: () => ({}),
+    ...actual,
+    useThemeTokens: () => ({
+      font: "test",
+      ink: "#ffffff",
+      ink2: "#cccccc",
+      ink3: "#aaaaaa",
+      well: "#101517",
+      panel: "#1a2029",
+      raisedHi: "#28323f",
+      edge: "#3e4a59",
+      edgeHi: "#536276",
+      edgeDark: "#080c11",
+      grid: "#ffffff12",
+      brasa: "#e96943",
+      ambar: "#d99022",
+      jade: "#3f8f74",
+      aco: "#7089a6",
+      lilas: "#9a83b5",
+      radius: 3,
+      bevelLit: 0.19,
+      bevelShade: 0.26,
+      contour: 0.34,
+      rampLit: 0.51,
+      rampShade: 0.44,
+      lift: 3,
+      liftHover: 5,
+    }),
   };
 });
 
 import { RadarIntelligenceCharts } from "@/features/opportunities/radar-intelligence-charts";
-import type { OpportunityListItem } from "@/features/opportunities/types";
+import type { OpportunityAnalytics } from "@/features/opportunities/types";
 
 afterEach(() => {
   cleanup();
   captured.clear();
 });
 
-describe("Radar clock redraw boundaries", () => {
-  it("changes only the SLA option when a real deadline moves between buckets", () => {
-    const now = Date.parse("2026-09-07T12:00:00Z");
-    const items = [
+function analytics(
+  overrides: Partial<OpportunityAnalytics> = {},
+): OpportunityAnalytics {
+  return {
+    stages: [
+      { label: "proposal", count: 48, total: "4891000.00", missing: 0, currency: "BRL" },
+      { label: "won", count: 20, total: "2060000.00", missing: 0, currency: "BRL" },
+    ],
+    signals: [{ label: "follow_up_overdue", count: 30 }],
+    sla: [
+      { bucket: "overdue", count: 7, total: "1000.00" },
+      { bucket: "soon", count: 3, total: null },
+    ],
+    opened: [{ day: "2026-09-01", count: 4 }],
+    activity: [{ day: "2026-09-02", count: 9 }],
+    rhythm: [{ weekday: 1, band: 2, count: 5 }],
+    points: [
       {
-        id: "clock-fixture",
-        external_stage: "Proposta",
+        id: "p1",
+        title: "Oportunidade Sintética 060",
+        score: "1.0000",
+        deal_value: "180000.00",
         currency: "BRL",
-        deal_value: "1000.00",
-        primary_signal_type: "follow_up_overdue",
-        sla_at: new Date(now + 5000).toISOString(),
+        stage: "lost",
+        overdue: true,
       },
-    ] as OpportunityListItem[];
-    const { rerender } = render(
-      <RadarIntelligenceCharts items={items} now={now} />,
+    ],
+    total: 148,
+    point_cap: 400,
+    source: "ARES Core / Supabase local",
+    freshness_at: "2026-09-12T00:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("Radar charts read the server aggregate", () => {
+  it("maps SLA buckets in the order the legend declares", () => {
+    render(<RadarIntelligenceCharts analytics={analytics()} />);
+    const option = [...captured].find(([label]) =>
+      label.startsWith("Oportunidades com SLA"),
+    )?.[1];
+    const series = option?.series as Array<{ data: Array<{ value: number }> }>;
+    // Vencido, Próximas 24h, Depois de 24h, Sem prazo válido
+    expect(series[0].data.map((item) => item.value)).toEqual([7, 3, 0, 0]);
+  });
+
+  it("plots every stage the aggregate reports, not just the loaded page", () => {
+    render(<RadarIntelligenceCharts analytics={analytics()} />);
+    const option = [...captured].find(([label]) =>
+      label.startsWith("Valor observado por etapa"),
+    )?.[1];
+    const series = option?.series as Array<{ data: Array<{ name: string }> }>;
+    expect(series[0].data.map((item) => item.name)).toEqual([
+      "Proposta",
+      "Ganho",
+    ]);
+  });
+
+  it("builds matrix points from numerics that arrive as strings", () => {
+    render(<RadarIntelligenceCharts analytics={analytics()} />);
+    const option = [...captured].find(([label]) =>
+      label.startsWith("Relação entre score e valor"),
+    )?.[1];
+    const series = option?.series as Array<{ data: Array<{ value: number[] }> }>;
+    expect(series[0].data).toHaveLength(1);
+    expect(series[0].data[0].value).toEqual([100, 180000]);
+  });
+
+  it("renders the empty state when the tenant has no opportunities", () => {
+    render(
+      <RadarIntelligenceCharts
+        analytics={analytics({
+          total: 0,
+          stages: [],
+          points: [],
+          signals: [],
+          opened: [],
+          activity: [],
+          rhythm: [],
+        })}
+      />,
     );
-    const initial = new Map(captured);
-    rerender(<RadarIntelligenceCharts items={items} now={now + 1000} />);
-    for (const [label, option] of initial)
-      expect(captured.get(label)).toBe(option);
-    rerender(<RadarIntelligenceCharts items={items} now={now + 6000} />);
-    for (const [label, option] of initial) {
-      if (label.startsWith("Oportunidades com SLA")) {
-        expect(captured.get(label)).not.toBe(option);
-        const series = captured.get(label)?.series as Array<{
-          data: Array<{ value: number }>;
-        }>;
-        expect(series[0].data.map((item) => item.value)).toEqual([1, 0, 0, 0]);
-      } else expect(captured.get(label)).toBe(option);
-    }
+    expect(captured.size).toBe(0);
   });
 });

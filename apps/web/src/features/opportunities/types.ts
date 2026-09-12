@@ -152,3 +152,36 @@ export interface ContextSnapshot {
   omitted_event_count: number;
   correlation_id: string;
 }
+
+/**
+ * Aggregates computed server-side over every opportunity of the tenant. The list
+ * endpoint caps at 100 rows and orders by urgency, so charts built from a page
+ * describe the busiest stage rather than the population.
+ */
+export interface OpportunityAnalytics {
+  stages: Array<{
+    label: string;
+    count: number;
+    total: Numeric | null;
+    missing: number;
+    currency: string;
+  }>;
+  signals: Array<{ label: string; count: number }>;
+  sla: Array<{ bucket: "overdue" | "soon" | "later" | "missing"; count: number; total: Numeric | null }>;
+  opened: Array<{ day: string; count: number }>;
+  activity: Array<{ day: string; count: number }>;
+  rhythm: Array<{ weekday: number; band: number; count: number }>;
+  points: Array<{
+    id: string;
+    title: string;
+    score: Numeric;
+    deal_value: Numeric;
+    currency: string;
+    stage: string;
+    overdue: boolean;
+  }>;
+  total: number;
+  point_cap: number;
+  source: string;
+  freshness_at: string;
+}

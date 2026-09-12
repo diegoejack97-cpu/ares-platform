@@ -358,6 +358,13 @@ async def test_fake_crm_lab_fault(
     return await client.simulate_fault(scenario)
 
 
+@app.get("/api/v1/opportunities/analytics")
+async def opportunity_analytics(user: CurrentUser) -> dict[str, Any]:
+    """Aggregates over every opportunity, so charts and agents share one population."""
+    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    return await service.opportunity_analytics()
+
+
 @app.get("/api/v1/opportunities")
 async def list_opportunities(
     user: CurrentUser,
