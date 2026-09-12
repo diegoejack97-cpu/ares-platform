@@ -8,6 +8,11 @@ import {
 } from "@/charts/ChartFrame";
 import { useThemeTokens } from "@/charts/aresTheme";
 import { magnitudeOption } from "@/charts/magnitudeOption";
+import {
+  heatmapOption,
+  matrixOption,
+  trendOption,
+} from "@/charts/analysisOptions";
 import type { ChartForm } from "@/charts/chartForms";
 import { safeSum } from "@/lib/numbers";
 
@@ -21,6 +26,26 @@ import type { OpportunityListItem } from "./types";
 const STAGE_FORMS: readonly ChartForm[] = ["column", "bar", "funnel", "treemap"];
 const SIGNAL_FORMS: readonly ChartForm[] = ["bar", "column", "treemap"];
 const SLA_FORMS: readonly ChartForm[] = ["bar", "column", "donut"];
+const AGING_FORMS: readonly ChartForm[] = ["line", "area"];
+const RHYTHM_FORMS: readonly ChartForm[] = ["heatmap", "column"];
+const MATRIX_FORMS: readonly ChartForm[] = ["scatter"];
+
+const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const HOUR_BANDS = ["18–24h", "12–18h", "6–12h", "0–6h"];
+
+/** Buckets a timestamp into the weekday column and hour-band row of the grid. */
+function rhythmCell(iso: string) {
+  const when = new Date(iso);
+  const hour = when.getHours();
+  const band = hour >= 18 ? 0 : hour >= 12 ? 1 : hour >= 6 ? 2 : 3;
+  return { column: when.getDay(), row: band };
+}
+
+function startOfDay(value: number) {
+  const day = new Date(value);
+  day.setHours(0, 0, 0, 0);
+  return day.getTime();
+}
 
 function groupItems(
   items: OpportunityListItem[],
@@ -156,6 +181,148 @@ export function RadarIntelligenceCharts({
   );
   const signalRows: ChartDatum[] = signals;
   const stageRows: ChartDatum[] = stages;
+
+  // opened_at and last_activity_at exist on every row and were never plotted:
+  // the Radar had no temporal dimension at all.
+  const aging = useMemo(() => {
+    const opened = new Map<number, number>();
+    const touched = new Map<number, number>();
+    for (const item of items) {
+      const open = Date.parse(item.opened_at);
+      if (Number.isFinite(open))
+        opened.set(startOfDay(open), (opened.get(startOfDay(open)) ?? 0) + 1);
+      const active = item.last_activity_at
+        ? Date.parse(item.last_activity_at)
+        : Number.NaN;
+      if (Number.isFinite(active))
+        touched.set(startOfDay(active), (touched.get(startOfDay(active)) ?? 0) + 1);
+    }
+    const toPoints = (source: Map<number, number>) =>
+      [...source.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([day, count]) => [day, count] as [number, number]);
+    return { opened: toPoints(opened), touched: toPoints(touched) };
+  }, [items]);
+
+  const rhythm = useMemo(() => {
+    const grid = new Map<string, number>();
+    for (const item of items) {
+      const stamp = item.last_activity_at ?? item.opened_at;
+      if (!stamp || !Number.isFinite(Date.parse(stamp))) continue;
+      const { column, row } = rhythmCell(stamp);
+      const key = `${column}:${row}`;
+      grid.set(key, (grid.get(key) ?? 0) + 1);
+    }
+    return [...grid.entries()].map(([key, value]) => {
+      const [column, row] = key.split(":").map(Number);
+      return [column, row, value] as [number, number, number];
+    });
+  }, [items]);
+
+  // score and deal_value both sit in the payload; neither was ever related.
+  const matrix = useMemo(
+    () =>
+      currencyItems
+        .filter((item) => Number.isFinite(item.deal_value))
+        .map((item) => ({
+          id: item.id,
+          label: item.title,
+          x: item.score,
+          y: item.deal_value,
+          color:
+            item.sla_at && Date.parse(item.sla_at) <= now
+              ? tokens.brasa
+              : tokens.aco,
+          detail:
+            item.sla_at && Date.parse(item.sla_at) <= now
+              ? "SLA vencido"
+              : (item.external_stage ?? "Sem etapa"),
+        })),
+    [currencyItems, now, tokens],
+  );
+
+  const agingChart = useCallback(
+    (form: ChartForm) => (
+      <AresChart
+        formKey={form}
+        option={trendOption(
+          form,
+          {
+            measure: "Oportunidades",
+            format: (value) => `${Math.round(value)}`,
+            series: [
+              {
+                key: "opened",
+                label: "Abertas",
+                color: tokens.brasa,
+                points: aging.opened,
+              },
+              {
+                key: "touched",
+                label: "Com atividade",
+                color: tokens.aco,
+                dash: [5, 3],
+                points: aging.touched,
+              },
+            ],
+          },
+          tokens,
+        )}
+        label="Oportunidades abertas e com atividade registrada ao longo do tempo"
+      />
+    ),
+    [aging, tokens],
+  );
+
+  const rhythmChart = useCallback(
+    (form: ChartForm) => (
+      <AresChart
+        formKey={form}
+        option={heatmapOption(
+          form,
+          {
+            columns: WEEKDAYS,
+            rows: HOUR_BANDS,
+            cells: rhythm,
+            measure: "oportunidades",
+            base: tokens.brasa,
+          },
+          tokens,
+        )}
+        label="Concentração de atividade por dia da semana e faixa horária"
+      />
+    ),
+    [rhythm, tokens],
+  );
+
+  const matrixChart = useCallback(
+    (form: ChartForm) => (
+      <AresChart
+        formKey={form}
+        option={matrixOption(
+          form,
+          {
+            points: matrix,
+            xName: "Score",
+            yName: `Valor (${currency})`,
+            formatX: (value) => `${Math.round(value)}`,
+            formatY: (value) => money(value, currency),
+            divider: {
+              x: 50,
+              y:
+                matrix.length > 0
+                  ? matrix.reduce((sum, point) => sum + point.y, 0) / matrix.length
+                  : 0,
+              quadrant: "Score alto · valor acima da média",
+            },
+          },
+          tokens,
+        )}
+        label="Relação entre score e valor do negócio, por oportunidade"
+      />
+    ),
+    [matrix, tokens, currency],
+  );
 
   // Stages are ordered, so their colour is one hue in monotone steps and the
   // reader sees the funnel order in the ramp itself.
@@ -348,6 +515,80 @@ export function RadarIntelligenceCharts({
             title="Janela de SLA"
             rows={sla}
             unit="Oportunidades"
+          />
+        }
+      />
+      <ChartFrame
+        {...metadata}
+        className="chart-aging"
+        title="Entrada e atividade no tempo"
+        definition="Quando as oportunidades abriram e quando foram tocadas"
+        unit="Oportunidades por dia"
+        period="Recorte carregado"
+        attribution="Observação operacional; sem projeção"
+        hasData={aging.opened.length > 0}
+        emptyMessage="A série começa quando o recorte traz datas de abertura."
+        forms={AGING_FORMS}
+        formKey="radar-aging"
+        renderForm={agingChart}
+        table={
+          <ChartDataTable
+            title="Entrada e atividade no tempo"
+            rows={aging.opened.map(([day, count]) => ({
+              label: new Date(day).toLocaleDateString("pt-BR"),
+              value: count,
+            }))}
+            unit="Abertas"
+          />
+        }
+      />
+      <ChartFrame
+        {...metadata}
+        className="chart-rhythm"
+        title="Quando a atividade acontece"
+        definition="Concentração por dia da semana e faixa horária"
+        unit="Oportunidades"
+        period="Última atividade registrada"
+        attribution="Observação operacional; horário do navegador"
+        hasData={rhythm.length > 0}
+        emptyMessage="A grade aparece quando houver atividade datada no recorte."
+        forms={RHYTHM_FORMS}
+        formKey="radar-rhythm"
+        renderForm={rhythmChart}
+        table={
+          <ChartDataTable
+            title="Quando a atividade acontece"
+            rows={rhythm.map(([column, row, value]) => ({
+              label: `${WEEKDAYS[column]} · ${HOUR_BANDS[row]}`,
+              value,
+            }))}
+            unit="Oportunidades"
+          />
+        }
+      />
+      <ChartFrame
+        {...metadata}
+        className="chart-matrix"
+        title="Score contra valor"
+        definition="Onde score alto e valor alto se encontram"
+        unit={`Score · valor em ${currency}`}
+        period="Fila no recorte atual"
+        attribution="Observação; o score não prevê fechamento"
+        hasData={matrix.length > 0}
+        emptyMessage="A matriz aparece quando houver score e valor na mesma moeda."
+        forms={MATRIX_FORMS}
+        formKey="radar-matrix"
+        renderForm={matrixChart}
+        table={
+          <ChartDataTable
+            title="Score contra valor"
+            rows={matrix.map((point) => ({
+              label: point.label,
+              value: point.y,
+              detail: `Score ${Math.round(point.x)}`,
+            }))}
+            unit={currency}
+            format={(value) => money(value, currency)}
           />
         }
       />

@@ -178,8 +178,44 @@ export function magnitudeOption(
   }
 
   if (form === "funnel") {
+    // Conversion between neighbours is the point of a funnel; the steepest fall
+    // is named outright so the reader is not left counting percentages.
+    const steps = spec.rows.map((row, index) => {
+      const previous = index > 0 ? spec.rows[index - 1].value : null;
+      const conversion =
+        index > 0 && previous && previous > 0 && row.value !== null
+          ? row.value / previous
+          : null;
+      return { row, conversion };
+    });
+    const worst = steps.reduce<{ index: number; value: number } | null>(
+      (lowest, step, index) =>
+        step.conversion !== null &&
+        (lowest === null || step.conversion < lowest.value)
+          ? { index, value: step.conversion }
+          : lowest,
+      null,
+    );
     return {
       ...base,
+      tooltip: {
+        ...tooltip(spec, tokens),
+        formatter: (params: { name?: string }) => {
+          const position = spec.rows.findIndex(
+            (entry) => entry.label === params.name,
+          );
+          const step = steps[position];
+          if (!step) return "";
+          const amount =
+            step.row.value === null ? "Não informado" : spec.format(step.row.value);
+          const drop =
+            step.conversion === null
+              ? "Primeira etapa do recorte."
+              : `${(step.conversion * 100).toFixed(0)}% do que entrou na etapa anterior` +
+                (worst?.index === position ? " — a maior queda do funil." : ".");
+          return `<strong>${step.row.label}</strong><br/>${spec.measure}: ${amount}<br/>${drop}`;
+        },
+      },
       series: [
         {
           id: "magnitude",
@@ -192,17 +228,28 @@ export function magnitudeOption(
           minSize: "22%",
           sort: "none",
           gap: 2,
+          // The conversion is on the band itself: a tooltip must never be the only
+          // way to read a value.
           label: {
             show: true,
             position: "inside",
             color: tokens.ink,
             fontSize: 11,
             fontWeight: 650,
-            formatter: ({ name }: { name: string }) => name,
+            formatter: ({ name }: { name: string }) => {
+              const position = spec.rows.findIndex((row) => row.label === name);
+              const step = steps[position];
+              if (!step || step.conversion === null) return name;
+              const pace = `${(step.conversion * 100).toFixed(0)}%`;
+              return worst?.index === position
+                ? `${name}  ▼ ${pace}`
+                : `${name}  ${pace}`;
+            },
           },
-          data: spec.rows.map((row, index) => ({
-            name: row.label,
-            value: row.value ?? 0,
+          labelLine: { show: false },
+          data: steps.map((step, index) => ({
+            name: step.row.label,
+            value: step.row.value ?? 0,
             itemStyle: {
               color: colors[index],
               borderColor: tokens.edgeDark,

@@ -2,16 +2,21 @@ import { memo, useEffect, useRef } from "react";
 import {
   BarChart,
   FunnelChart,
+  HeatmapChart,
   LineChart,
   PieChart,
+  ScatterChart,
   TreemapChart,
 } from "echarts/charts";
 import {
   GraphicComponent,
   GridComponent,
   LegendComponent,
+  MarkAreaComponent,
   MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
+  VisualMapComponent,
 } from "echarts/components";
 import {
   init,
@@ -29,11 +34,16 @@ registerECharts([
   PieChart,
   FunnelChart,
   TreemapChart,
+  HeatmapChart,
+  ScatterChart,
   GridComponent,
   GraphicComponent,
   TooltipComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkAreaComponent,
+  MarkPointComponent,
+  VisualMapComponent,
   SVGRenderer,
 ]);
 
@@ -126,7 +136,7 @@ export const AresChart = memo(function AresChart({
       {
         // Switching form swaps axes and series type, so the previous shape must go.
         notMerge: formKey !== formKeyRef.current,
-        replaceMerge: ["series", "xAxis", "yAxis", "legend"],
+        replaceMerge: ["series", "xAxis", "yAxis", "legend", "visualMap"],
         lazyUpdate: true,
       },
     );

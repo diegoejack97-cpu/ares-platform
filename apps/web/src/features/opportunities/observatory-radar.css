@@ -358,7 +358,42 @@
   border-radius: 0;
   box-shadow: none;
 }
-.radar-v2.observatory .radar-intelligence-grid > .chart-frame:last-child { border-right: 0; }
+/* Three magnitude panels on the top row, then the analytical pair, then the
+   matrix at full width — each form gets the room its reading needs. */
+.radar-v2.observatory .radar-intelligence-grid > .chart-aging {
+  grid-column: 1 / span 2;
+}
+.radar-v2.observatory .radar-intelligence-grid > .chart-rhythm {
+  grid-column: 3;
+}
+.radar-v2.observatory .radar-intelligence-grid > .chart-matrix {
+  grid-column: 1 / -1;
+}
+.radar-v2.observatory .radar-intelligence-grid > .chart-sla,
+.radar-v2.observatory .radar-intelligence-grid > .chart-rhythm,
+.radar-v2.observatory .radar-intelligence-grid > .chart-matrix {
+  border-right: 0;
+}
+.radar-v2.observatory .radar-intelligence-grid > .chart-aging,
+.radar-v2.observatory .radar-intelligence-grid > .chart-rhythm,
+.radar-v2.observatory .radar-intelligence-grid > .chart-matrix {
+  border-top: 1px solid var(--edge);
+}
+.observatory .radar-intelligence-grid .chart-matrix .chart-plot { min-height: 320px; }
+.observatory .radar-intelligence-grid .chart-aging .chart-plot { min-height: 250px; }
+@media (max-width: 1100px) {
+  .radar-v2.observatory .radar-intelligence-grid > .chart-frame,
+  .radar-v2.observatory .radar-intelligence-grid > .chart-aging,
+  .radar-v2.observatory .radar-intelligence-grid > .chart-rhythm,
+  .radar-v2.observatory .radar-intelligence-grid > .chart-matrix {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .radar-v2.observatory .radar-intelligence-grid > .chart-frame:first-child {
+    border-top: 0;
+  }
+}
 .observatory .radar-intelligence-grid .chart-plot { min-height: 230px; padding: 4px; }
 .observatory .radar-intelligence-grid .chart-frame-header { gap: 8px; }
 .observatory .radar-intelligence-grid .chart-frame-heading { min-height: 46px; }

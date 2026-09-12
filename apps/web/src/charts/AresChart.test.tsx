@@ -22,6 +22,8 @@ vi.mock("echarts/charts", () => ({
   PieChart: {},
   FunnelChart: {},
   TreemapChart: {},
+  HeatmapChart: {},
+  ScatterChart: {},
 }));
 vi.mock("echarts/components", () => ({
   GraphicComponent: {},
@@ -29,6 +31,9 @@ vi.mock("echarts/components", () => ({
   TooltipComponent: {},
   LegendComponent: {},
   MarkLineComponent: {},
+  MarkAreaComponent: {},
+  MarkPointComponent: {},
+  VisualMapComponent: {},
 }));
 vi.mock("echarts/renderers", () => ({ SVGRenderer: {} }));
 
