@@ -24,6 +24,7 @@ import {
 } from "./api";
 import { dateTime, money, signalLabels } from "./format";
 import { ScoreBar } from "./score-bar";
+import { OpportunityGraphPanel } from "@/features/graph/OpportunityGraphPanel";
 
 export function OpportunityDetailPage() {
   const { id = "" } = useParams();
@@ -77,7 +78,9 @@ export function OpportunityDetailPage() {
             {detail.error?.message ?? "O recurso não existe neste tenant."}
           </span>
           <Link to="/radar">Voltar ao Radar</Link>
-          <Button variant="outline" onClick={() => void detail.refetch()}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => void detail.refetch()}>
+            Tentar novamente
+          </Button>
         </div>
       </main>
     );
@@ -88,7 +91,15 @@ export function OpportunityDetailPage() {
       <Link className="back-link" to="/radar">
         <ArrowLeftIcon aria-hidden /> Voltar ao Radar
       </Link>
-      {detail.isError ? <div className="route-status" role="alert">A leitura não pôde ser atualizada. Exibindo o último contexto recebido.<Button onClick={() => void detail.refetch()}>Tentar novamente</Button></div> : null}
+      {detail.isError ? (
+        <div className="route-status" role="alert">
+          A leitura não pôde ser atualizada. Exibindo o último contexto
+          recebido.
+          <Button onClick={() => void detail.refetch()}>
+            Tentar novamente
+          </Button>
+        </div>
+      ) : null}
       <header className="detail-header">
         <div>
           <span className="eyebrow">
@@ -119,7 +130,9 @@ export function OpportunityDetailPage() {
         </div>
         <div>
           <span>SLA</span>
-          <strong><SlaCountdown timestamp={opportunity.sla_at} /></strong>
+          <strong>
+            <SlaCountdown timestamp={opportunity.sla_at} />
+          </strong>
           <small>{dateTime(opportunity.sla_at)}</small>
         </div>
         <div>
@@ -169,6 +182,8 @@ export function OpportunityDetailPage() {
               ))}
             </div>
           </section>
+
+          <OpportunityGraphPanel opportunityId={id} />
 
           <section className="panel detail-section">
             <div className="panel-heading">
@@ -221,8 +236,17 @@ export function OpportunityDetailPage() {
                   <div key={key}>
                     <dt>{key.replaceAll("_", " ")}</dt>
                     <dd>
-                      <strong>{finiteNumber(part.value) === null ? "Não informado" : Math.round(part.value * 100)}</strong>
-                      <small>peso {finiteNumber(part.weight) === null ? "não informado" : `${Math.round(part.weight * 100)}%`}</small>
+                      <strong>
+                        {finiteNumber(part.value) === null
+                          ? "Não informado"
+                          : Math.round(part.value * 100)}
+                      </strong>
+                      <small>
+                        peso{" "}
+                        {finiteNumber(part.weight) === null
+                          ? "não informado"
+                          : `${Math.round(part.weight * 100)}%`}
+                      </small>
                     </dd>
                   </div>
                 ),
@@ -316,7 +340,6 @@ export function OpportunityDetailPage() {
               </div>
             )}
           </section>
-
         </aside>
       </section>
     </main>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -10,6 +10,7 @@ from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 
 from ares.ai.budget import AIBudgetGuard
+from ares.ai.usage import UsageObservation, observe
 from ares.decision.models import (
     ActionAlternative,
     ActionDraft,
@@ -33,6 +34,7 @@ class ModelResult:
     prompt_hash: str
     status: str
     error_code: str | None = None
+    usage: UsageObservation = UsageObservation()
 
 
 class RecommendationModelFactory:
@@ -53,10 +55,17 @@ class RecommendationModelFactory:
         prompt = json.dumps(context, default=str, ensure_ascii=False, sort_keys=True)
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
         if not self._api_key:
-            return self._fallback(context, prompt_hash, "openai_key_missing")
+            return replace(
+                self._fallback(context, prompt_hash, "openai_key_missing"),
+                usage=UsageObservation(status="not_called"),
+            )
         budget = self._budget.check(tenant_id, self._estimated_cost)
         if not budget.allowed:
-            return self._fallback(context, prompt_hash, "ai_budget_exceeded")
+            return replace(
+                self._fallback(context, prompt_hash, "ai_budget_exceeded"),
+                usage=UsageObservation(status="not_called"),
+            )
+        usage = UsageObservation(model_id=self._model_id)
         try:
             agent = Agent(
                 name="ARES Follow-up Agent",
@@ -72,10 +81,17 @@ class RecommendationModelFactory:
                 telemetry=False,
             )
             response = agent.run(prompt)
+            usage = observe(response.metrics, self._model_id)
             output = RecommendationOutput.model_validate(response.content)
-            return ModelResult(output, "agno_openai", self._model_id, prompt_hash, "succeeded")
+            return ModelResult(
+                output, "agno_openai", self._model_id, prompt_hash, "succeeded", usage=usage
+            )
         except Exception as error:  # noqa: BLE001 - safe degradation boundary
-            return self._fallback(context, prompt_hash, type(error).__name__[:80])
+            return replace(
+                self._fallback(context, prompt_hash, type(error).__name__[:80]),
+                model_id=self._model_id,
+                usage=usage,
+            )
 
     def _fallback(self, context: dict[str, Any], prompt_hash: str, error_code: str) -> ModelResult:
         score = float(context.get("opportunity", {}).get("score") or 0)

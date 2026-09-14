@@ -16,6 +16,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ares.ai.budget import AIBudgetGuard
+from ares.ai.usage import record_usage
 from ares.connectors.provider import CRMProvider
 from ares.decision.model_factory import RecommendationModelFactory
 from ares.decision.models import ActionDraft, DecideCommand
@@ -149,6 +150,7 @@ class DecisionService:
             "citations": row["citations_json"],
         }
         generated = self._models.generate(self._tenant_id, context)
+        record_usage(self._database_url, self._tenant_id, run["id"], generated.usage)
         output = generated.output
         policy = self._policy.evaluate(output.recommended_action, self._provider.capabilities())
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:

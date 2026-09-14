@@ -19,15 +19,16 @@ import { finiteNumber } from "@/lib/numbers";
 import { money, signalLabels } from "./format";
 import type { OpportunityAnalytics } from "./types";
 
-
-
-
-
 /**
  * Only forms that keep the reading honest. Stages are ordered, so a funnel and a
  * treemap are legitimate; signals are nominal, so a funnel would invent a sequence.
  */
-const STAGE_FORMS: readonly ChartForm[] = ["column", "bar", "funnel", "treemap"];
+const STAGE_FORMS: readonly ChartForm[] = [
+  "column",
+  "bar",
+  "funnel",
+  "treemap",
+];
 const SIGNAL_FORMS: readonly ChartForm[] = ["bar", "column", "treemap"];
 const SLA_FORMS: readonly ChartForm[] = ["bar", "column", "donut"];
 const AGING_FORMS: readonly ChartForm[] = ["line", "area"];
@@ -79,7 +80,9 @@ export function RadarIntelligenceCharts({
         .map((row) => ({
           label: stageLabels[row.label] ?? row.label,
           value: finiteNumber(row.total),
-          detail: row.missing ? `${row.missing} sem valor informado` : undefined,
+          detail: row.missing
+            ? `${row.missing} sem valor informado`
+            : undefined,
         }))
         .sort((a, b) => (b.value ?? 0) - (a.value ?? 0)),
     [analytics, currency],
@@ -120,8 +123,16 @@ export function RadarIntelligenceCharts({
         color: tokens.ambar,
         worsening: true,
       },
-      { label: "Depois de 24h", value: byBucket.get("later") ?? 0, color: tokens.jade },
-      { label: "Sem prazo válido", value: byBucket.get("missing") ?? 0, color: tokens.aco },
+      {
+        label: "Depois de 24h",
+        value: byBucket.get("later") ?? 0,
+        color: tokens.jade,
+      },
+      {
+        label: "Sem prazo válido",
+        value: byBucket.get("missing") ?? 0,
+        color: tokens.aco,
+      },
     ];
   }, [analytics, tokens]);
 
@@ -141,7 +152,8 @@ export function RadarIntelligenceCharts({
     () =>
       (analytics?.rhythm ?? []).map(
         // Postgres bands hours 0..23 into 0..3 ascending; the grid reads top-down.
-        (row) => [row.weekday, 3 - row.band, row.count] as [number, number, number],
+        (row) =>
+          [row.weekday, 3 - row.band, row.count] as [number, number, number],
       ),
     [analytics],
   );
@@ -366,7 +378,10 @@ export function RadarIntelligenceCharts({
   const metadata = {
     freshness,
     source,
-    state: (analytics?.total ?? 0) === 0 && state === "ready" ? ("empty" as const) : state,
+    state:
+      (analytics?.total ?? 0) === 0 && state === "ready"
+        ? ("empty" as const)
+        : state,
     onRetry,
     partialMessage,
   };
@@ -521,6 +536,7 @@ export function RadarIntelligenceCharts({
           <ChartDataTable
             title="Score contra valor"
             rows={matrix.map((point) => ({
+              id: point.id,
               label: point.label,
               value: point.y,
               detail: `Score ${Math.round(point.x)} de 100`,

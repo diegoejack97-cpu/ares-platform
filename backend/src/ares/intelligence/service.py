@@ -13,6 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ares.graph.projector import project_event
 from ares.intelligence.models import CanonicalEvent, PipelineResult
 from ares.intelligence.rules import evaluate
 from ares.intelligence.scoring import calculate_score
@@ -91,6 +92,7 @@ class IntelligenceService:
             event = CanonicalEvent.model_validate(event_row)
             drafts = evaluate(event)
             if not drafts:
+                project_event(connection, self._tenant_id, event.id)
                 return PipelineResult(event_id=event.id, signal_ids=[])
 
             deal = self._upsert_deal(connection, event)
@@ -228,6 +230,7 @@ class IntelligenceService:
             context_ref = self._build_context(
                 connection, opportunity["id"], deal, event.correlation_id
             )
+            project_event(connection, self._tenant_id, event.id)
             return PipelineResult(
                 event_id=event.id,
                 signal_ids=signal_ids,

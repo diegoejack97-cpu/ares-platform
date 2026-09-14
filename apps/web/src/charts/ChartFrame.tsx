@@ -248,6 +248,7 @@ export function ChartFrame({
 }
 
 export interface ChartDatum {
+  id?: string;
   label: string;
   value: number | null;
   color?: string;
@@ -277,7 +278,7 @@ export function ChartDataTable({
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.label}>
+          <tr key={row.id ?? row.label}>
             <th scope="row">
               {row.label}
               {row.detail && <small>{row.detail}</small>}
@@ -315,7 +316,7 @@ export function ChartLegend({
       aria-label="Valores do gráfico"
     >
       {rows.map((row) => (
-        <li key={row.label}>
+        <li key={row.id ?? row.label}>
           <span
             className="chart-legend-key"
             style={

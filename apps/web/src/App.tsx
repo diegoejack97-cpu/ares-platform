@@ -20,8 +20,10 @@ import {
   SunIcon,
   CrosshairIcon,
   KanbanIcon,
+  CpuIcon,
 } from "@phosphor-icons/react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { getOpportunities, getApprovals } from "@/features/opportunities/api";
 import { useLiveClock } from "@/lib/live-clock";
@@ -40,7 +42,20 @@ const FakeCRMLabPage = lazy(() =>
 );
 
 const PipelinePage = lazy(() =>
-  import("@/features/pipeline/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+  import("@/features/pipeline/PipelinePage").then((module) => ({
+    default: module.PipelinePage,
+  })),
+);
+
+const AgentsPage = lazy(() =>
+  import("@/features/agents/AgentsPage").then((module) => ({
+    default: module.AgentsPage,
+  })),
+);
+const ChatPage = lazy(() =>
+  import("@/features/chat/ChatPage").then((module) => ({
+    default: module.ChatPage,
+  })),
 );
 
 function App() {
@@ -235,6 +250,22 @@ function App() {
             <span className="nav-copy">Laboratório CRM</span>
             <small className="nav-meta">TESTE</small>
           </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/agentes"
+            title="Agentes"
+          >
+            <CpuIcon aria-hidden />
+            <span className="nav-copy">Agentes</span>
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/chat"
+            title="Chat ARES"
+          >
+            <CpuIcon aria-hidden />
+            <span className="nav-copy">Chat ARES</span>
+          </NavLink>
           <span className="nav-item future" title="Command Center">
             <GaugeIcon aria-hidden />
             <span className="nav-copy">Command Center</span>
@@ -301,9 +332,59 @@ function App() {
           </button>
         </div>
         <Routes>
+          <Route
+            path="/chat"
+            element={
+              <Suspense
+                fallback={
+                  <Skeleton
+                    className="h-64 w-full"
+                    aria-label="Carregando chat"
+                  />
+                }
+              >
+                <ChatPage />
+              </Suspense>
+            }
+          />
           <Route path="/" element={<Navigate to="/radar" replace />} />
           <Route path="/journal" element={<EventJournalPage />} />
-          <Route path="/pipeline" element={<Suspense fallback={<main className="workspace route-loading" aria-busy="true">Preparando leitura do funil…</main>}><PipelinePage /></Suspense>} />
+          <Route
+            path="/agentes"
+            element={
+              <Suspense
+                fallback={
+                  <main
+                    className="workspace"
+                    aria-busy="true"
+                    aria-label="Carregando agentes"
+                  >
+                    <div className="detail-loading">
+                      <i />
+                      <i />
+                      <i />
+                    </div>
+                  </main>
+                }
+              >
+                <AgentsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/pipeline"
+            element={
+              <Suspense
+                fallback={
+                  <main className="workspace route-loading" aria-busy="true">
+                    Preparando leitura do funil…
+                  </main>
+                }
+              >
+                <PipelinePage />
+              </Suspense>
+            }
+          />
           <Route
             path="/fake-crm"
             element={

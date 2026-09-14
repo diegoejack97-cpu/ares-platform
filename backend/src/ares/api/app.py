@@ -11,8 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
+from ares.agents.api import agent_router
 from ares.auth.models import AuthenticatedUser
 from ares.auth.service import SupabaseAuthService
+from ares.chat.api import chat_router
 from ares.config import get_settings
 from ares.connectors.fake_crm import FakeCRMProvider
 from ares.connectors.fake_crm_lab import FakeCRMLabClient
@@ -22,6 +24,7 @@ from ares.decision.models import DecideCommand
 from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
 from ares.event_journal.service import EventJournal, InMemoryEventJournal, PostgresEventJournal
+from ares.graph.api import graph_router
 from ares.integrations.api import integration_router
 from ares.intelligence.service import IntelligenceService
 from ares.workers.tick import TickWorker
@@ -125,6 +128,9 @@ async def require_user(
 CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
 
 app.include_router(integration_router(settings, require_user))
+app.include_router(agent_router(settings, require_user))
+app.include_router(graph_router(settings, require_user))
+app.include_router(chat_router(settings, require_user))
 
 
 def require_development() -> None:
