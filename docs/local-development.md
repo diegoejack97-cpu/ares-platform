@@ -28,6 +28,9 @@ O bootstrap cria somente no ambiente local:
 - `.env`, `apps/web/.env.local` e `supabase/functions/.env` ignorados pelo Git.
 
 A senha local é exibida pelo bootstrap. Nunca reutilize essas credenciais em ambientes compartilhados.
+Executar `npm run db:bootstrap` de novo redefine a senha do admin e o GoTrue encerra as sessões
+abertas desse usuário: o navegador volta para a tela de login (a interface valida a sessão no
+servidor ao carregar e ao voltar para a aba).
 
 ## Portas e recuperação da leitura
 

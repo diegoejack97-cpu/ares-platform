@@ -146,5 +146,8 @@ writeFileSync(
 );
 
 console.log("Bootstrap local concluído.");
+console.log(
+  "Sessões anteriores do admin foram encerradas pela redefinição de senha; entre novamente no navegador.",
+);
 console.log(`Login: ${EMAIL}`);
 console.log(`Senha local: ${PASSWORD}`);

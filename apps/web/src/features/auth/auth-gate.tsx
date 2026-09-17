@@ -11,15 +11,33 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
+    // getSession only reads local storage; a session revoked server-side
+    // (password reset, admin sign-out) must fall back to the login page.
+    const validate = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        const { error } = await supabase.auth.getUser();
+        if (error) {
+          await supabase.auth.signOut({ scope: "local" });
+          return;
+        }
+      }
       setSession(data.session);
       setLoading(false);
-    });
+    };
+    void validate();
+    const revalidate = () => {
+      if (document.visibilityState === "visible") void validate();
+    };
+    document.addEventListener("visibilitychange", revalidate);
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setLoading(false);
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      document.removeEventListener("visibilitychange", revalidate);
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   const value = useMemo(
