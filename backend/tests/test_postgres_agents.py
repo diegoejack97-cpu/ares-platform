@@ -36,6 +36,12 @@ def fixture():
             (tenant, str(tenant)),
         )
         db.execute(
+            "insert into public.tenant_quotas(tenant_id,seats_limit,ai_daily_budget_brl,"
+            "ai_monthly_budget_brl,usd_brl_rate,rate_source,updated_by) "
+            "values(%s,10,1,10,5,'synthetic test',%s)",
+            (tenant, actor),
+        )
+        db.execute(
             "insert into public.memberships(tenant_id,user_id,role) values(%s,%s,'manager')",
             (tenant, actor),
         )

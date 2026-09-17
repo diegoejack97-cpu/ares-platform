@@ -23,6 +23,12 @@ class CreateTaskRequest(BaseModel):
     title: str = Field(min_length=1, max_length=240)
 
 
+class CreateLeadRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=32)
+
+
 class AddNoteRequest(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
 

@@ -5,11 +5,13 @@ import json
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Literal
+from uuid import UUID, uuid4
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 
 from ares.ai.budget import AIBudgetGuard
+from ares.ai.quotas import estimate_usd
 from ares.ai.usage import UsageObservation, observe
 from ares.decision.models import (
     ActionAlternative,
@@ -59,7 +61,16 @@ class RecommendationModelFactory:
                 self._fallback(context, prompt_hash, "openai_key_missing"),
                 usage=UsageObservation(status="not_called"),
             )
-        budget = self._budget.check(tenant_id, self._estimated_cost)
+        try:
+            estimate = max(self._estimated_cost, estimate_usd(self._model_id, len(prompt.encode())))
+        except ValueError:
+            return replace(
+                self._fallback(context, prompt_hash, "model_pricing_unconfigured"),
+                usage=UsageObservation(status="not_called"),
+            )
+        budget = self._budget.reserve(
+            tenant_id, UUID(str(context.get("run_id") or uuid4())), estimate
+        )
         if not budget.allowed:
             return replace(
                 self._fallback(context, prompt_hash, "ai_budget_exceeded"),
@@ -74,6 +85,8 @@ class RecommendationModelFactory:
                     api_key=self._api_key,
                     store=False,
                     max_output_tokens=900,
+                    timeout=45,
+                    max_retries=0,
                 ),
                 instructions=SYSTEM_RULES,
                 tools=[],

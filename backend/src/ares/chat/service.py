@@ -3,7 +3,6 @@
 import hashlib
 import json
 from collections.abc import Iterator
-from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -14,6 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ares.ai.budget import AIBudgetGuard
+from ares.ai.quotas import estimate_usd
 from ares.ai.usage import UsageObservation, observe, record_usage
 from ares.auth.models import AuthenticatedUser
 from ares.config import Settings
@@ -88,9 +88,6 @@ class ChatService:
         context["question_tokens_upper_bound"] = len(text.encode())
         if not self.settings.openai_api_key.get_secret_value():
             raise ChatFailure("model_not_configured")
-        budget = AIBudgetGuard(self.settings.database_url).check(user.tenant_id, Decimal("0.01"))
-        if not budget.allowed:
-            raise ChatFailure("ai_budget_exceeded", 429)
         correlation, run_id, message = uuid4(), uuid4(), uuid4()
         with psycopg.connect(self.settings.database_url, row_factory=dict_row) as db:
             conversation = db.execute(
@@ -147,6 +144,30 @@ class ChatService:
                     Jsonb(json.loads(json.dumps(context, default=str))),
                 ),
             )
+        try:
+            estimate = estimate_usd(
+                self.settings.openai_model,
+                len((RULES + text + str(context["content"])).encode()),
+                2,
+            )
+            budget = AIBudgetGuard(self.settings.database_url).reserve(
+                user.tenant_id, run_id, estimate
+            )
+            if not budget.allowed:
+                raise ChatFailure(budget.code, 429)
+        except (ValueError, ChatFailure) as failure:
+            with psycopg.connect(self.settings.database_url) as db:
+                db.execute(
+                    "update public.messages set status='failed' where tenant_id=%s and id=%s",
+                    (user.tenant_id, message),
+                )
+                db.execute(
+                    "update public.agent_runs set status='failed',finished_at=now(),error_code='quota_preflight_denied' where tenant_id=%s and id=%s",
+                    (user.tenant_id, run_id),
+                )
+            if isinstance(failure, ChatFailure):
+                raise
+            raise ChatFailure("model_pricing_unconfigured") from None
         return {
             "id": message,
             "run_id": run_id,

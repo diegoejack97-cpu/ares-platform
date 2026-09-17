@@ -5,6 +5,9 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 
+from ares.ai.quotas import QuotaDecision, QuotaGuard
+from ares.provider.billing import billing_status
+
 
 @dataclass(frozen=True)
 class BudgetDecision:
@@ -22,7 +25,12 @@ class AIBudgetGuard:
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
 
+    def reserve(self, tenant: UUID, run: UUID, estimate: Decimal) -> QuotaDecision:
+        return QuotaGuard(self._database_url).reserve(tenant, run, estimate)
+
     def check(self, tenant_id: UUID, estimated_cost_usd: Decimal) -> BudgetDecision:
+        if billing_status(self._database_url, tenant_id)["degraded"]:
+            return BudgetDecision(False, True, Decimal(0), Decimal(0), Decimal(0), Decimal(0))
         if estimated_cost_usd < 0:
             raise ValueError("estimated_cost_usd must be non-negative")
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:

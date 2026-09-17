@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ares.fake_crm_sandbox.models import (
     AddNoteRequest,
+    CreateLeadRequest,
     CreateTaskRequest,
     UpdateStageRequest,
     WebhookFixtureRequest,
@@ -89,6 +90,7 @@ async def health() -> dict[str, Any]:
 @app.get("/v1/capabilities")
 async def capabilities(_auth: Authorized, _fault: Fault) -> dict[str, bool]:
     return {
+        "create_lead": True,
         "read_deals": True,
         "describe_schema": True,
         "read_changes": True,
@@ -171,6 +173,16 @@ async def create_task(
     return _write(lambda: store.write("task", deal_id, payload.title, idempotency_key))
 
 
+@app.post("/v1/leads")
+async def create_lead(
+    payload: CreateLeadRequest,
+    _auth: Authorized,
+    _fault: Fault,
+    idempotency_key: Annotated[str, Depends(require_idempotency)],
+) -> dict[str, Any]:
+    return _write(lambda: store.create_lead(payload.model_dump(), idempotency_key))
+
+
 @app.post("/v1/deals/{deal_id}/notes")
 async def add_note(
     deal_id: str,
@@ -234,7 +246,7 @@ async def webhook_fixture(payload: WebhookFixtureRequest, _auth: Authorized) -> 
 
 def _write(operation: Any) -> dict[str, Any]:
     try:
-        return operation().model_dump(mode="json")
+        return dict(operation().model_dump(mode="json"))
     except SandboxNotFound as error:
         raise HTTPException(status_code=404, detail={"code": "deal_not_found"}) from error
     except SandboxConflict as error:

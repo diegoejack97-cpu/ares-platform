@@ -21,6 +21,9 @@ values
   ('12000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'm2-member@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('12000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'm2-outsider@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now());
 insert into public.tenants (id, name, slug) values ('22000000-0000-0000-0000-000000000001', 'M2 Tenant', 'm2-tenant');
+-- M6: membership activation fails closed without a seat contract.
+insert into public.tenant_quotas (tenant_id, seats_limit, ai_daily_budget_brl, ai_monthly_budget_brl, usd_brl_rate, rate_source, updated_by)
+values ('22000000-0000-0000-0000-000000000001', 10, 0, 0, 1, 'pgtap synthetic', '12000000-0000-0000-0000-000000000001');
 insert into public.memberships (tenant_id, user_id, role) values ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000001', 'seller');
 insert into public.commercial_events (id, tenant_id, event_type, producer, aggregate_type, aggregate_id, correlation_id, actor_type, source, occurred_at, payload_hash)
 values ('42000000-0000-0000-0000-000000000001', '22000000-0000-0000-0000-000000000001', 'deal.updated', 'test', 'deal', 'm2-deal', '52000000-0000-0000-0000-000000000001', 'external_system', 'crm', now(), 'hash');

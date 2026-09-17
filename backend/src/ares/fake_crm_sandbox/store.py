@@ -42,6 +42,7 @@ class SandboxStore:
             self.activities = list(seed["activities"])
             self.tasks: list[dict[str, Any]] = []
             self.notes: list[dict[str, Any]] = []
+            self.leads: list[dict[str, Any]] = []
             self._idempotency: dict[str, tuple[str, SandboxWriteResult]] = {}
             self._snapshots: dict[str, DealSnapshot] = {}
         return self.counts()
@@ -55,6 +56,20 @@ class SandboxStore:
             "tasks": len(self.tasks),
             "notes": len(self.notes),
         }
+
+    def create_lead(self, payload: dict[str, Any], idempotency_key: str) -> SandboxWriteResult:
+        fingerprint = self._fingerprint("lead", payload)
+        with self._lock:
+            prior = self._idempotency.get(idempotency_key)
+            if prior:
+                if prior[0] != fingerprint:
+                    raise SandboxConflict("idempotency_key_reused_with_different_payload")
+                return prior[1].model_copy(update={"duplicate": True})
+            external_id = f"lead-{uuid4()}"
+            self.leads.append({"id": external_id, **payload, "synthetic": True})
+            result = SandboxWriteResult(external_id=external_id)
+            self._idempotency[idempotency_key] = (fingerprint, result)
+            return result
 
     def list_deals(
         self,

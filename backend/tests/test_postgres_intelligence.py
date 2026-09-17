@@ -1,6 +1,6 @@
 import os
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -21,11 +21,12 @@ async def test_m2_pipeline_is_idempotent_explainable_and_queryable() -> None:
     now = datetime.now(UTC)
     journal = PostgresEventJournal(DATABASE_URL, TENANT_ID)
     service = IntelligenceService(DATABASE_URL, TENANT_ID)
+    fixture_id = str(uuid4())
     event = IncomingCRMEvent(
-        provider_event_id="m2-postgres-integration-1",
+        provider_event_id=f"m2-postgres-integration-{fixture_id}",
         event_type="deal.updated",
         aggregate_type="deal",
-        aggregate_id="deal-m2-integration",
+        aggregate_id=f"deal-m2-{fixture_id}",
         occurred_at=now,
         data={
             "title": "Integração M2",
@@ -52,6 +53,11 @@ async def test_m2_pipeline_is_idempotent_explainable_and_queryable() -> None:
     assert first.opportunity_id is not None
 
     page = await service.list_opportunities(min_score=0.8)
+    while (
+        not any(item["id"] == first.opportunity_id for item in page["items"])
+        and page["next_cursor"]
+    ):
+        page = await service.list_opportunities(min_score=0.8, cursor=page["next_cursor"])
     row = next(row for row in page["items"] if row["id"] == first.opportunity_id)
     assert row["version"] == 2
     detail = await service.get_opportunity(first.opportunity_id)

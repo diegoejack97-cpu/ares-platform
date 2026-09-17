@@ -22,7 +22,7 @@ class JournalEvent(BaseModel):
     aggregate_id: str
     correlation_id: UUID = Field(default_factory=uuid4)
     source: Literal["crm"] = "crm"
-    producer: Literal["fake-crm"] = "fake-crm"
+    producer: str = Field(default="fake-crm", min_length=1, max_length=200)
     status: Literal["recorded"] = "recorded"
     occurred_at: datetime
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

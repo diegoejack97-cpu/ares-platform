@@ -70,6 +70,171 @@ export type OpportunityGraph = {
   derivation_version: string;
 };
 
+export type QuotaCommand = {
+  reason: string;
+  expected_version: number;
+  seats_limit: number;
+  ai_daily_budget_brl: number | string;
+  ai_monthly_budget_brl: number | string;
+  usd_brl_rate: number | string;
+  rate_source: string;
+};
+
+export type QuotaRecord = {
+  seats_limit: number;
+  ai_daily_budget_brl: string;
+  ai_monthly_budget_brl: string;
+  usd_brl_rate: string;
+  rate_source: string;
+  updated_at: string;
+};
+
+export type InviteCommand = {
+  email: string;
+  role: "admin" | "manager" | "seller" | "auditor";
+  reason: string;
+};
+
+export type ActivateCommand = {
+  user_id: string;
+  expected_version: number;
+  reason: string;
+};
+
+export type MembershipCommand = {
+  expected_version: number;
+  active: boolean;
+  reason: string;
+};
+
+export type LicensePage = {
+  seats_limit: number;
+  used: number;
+  invitations: Array<InvitationRecord>;
+  memberships: Array<MembershipRecord>;
+  next_invitation: string | null;
+  next_member: string | null;
+};
+
+export type InvitationRecord = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  version: number;
+};
+
+export type MembershipRecord = {
+  user_id: string;
+  role: string;
+  active: boolean;
+  version: number;
+};
+
+export type LeadInput = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  idempotency_key: string;
+};
+
+export type LeadResolve = {
+  action: "create" | "merge" | "discard" | "undo";
+  expected_version: number;
+  target_subject_id?: string | null;
+  reason: string;
+};
+
+export type LeadRecord = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  version: number;
+  owner_id: string;
+  target_subject_id: string | null;
+  external_id: string | null;
+  correlation_id: string;
+  created_at: string;
+};
+
+export type LeadPage = {
+  items: Array<LeadRecord>;
+  next_cursor: string | null;
+  can_create: boolean;
+};
+
+export type LeadCandidate = {
+  id: string;
+  display_name: string;
+  score: number;
+  reasons: Array<string>;
+};
+
+export type ImpactWindow = {
+  since: string;
+  until: string;
+  days: number;
+};
+
+export type ImpactCounts = {
+  at_risk: number;
+  worked: number;
+};
+
+export type ImpactAmount = {
+  currency: string | null;
+  observations: number;
+  synthetic_observations: number;
+  sales_observed: number;
+  recovered: number;
+  sale_value: string | null;
+  ares_influenced_value: string | null;
+  incremental_value: string | null;
+  freshness_at: string | null;
+};
+
+export type ImpactCost = {
+  runs: number;
+  measured_runs: number;
+  cost_usd: string | null;
+};
+
+export type ImpactSummary = {
+  window: ImpactWindow;
+  counts: ImpactCounts;
+  amounts: Array<ImpactAmount>;
+  ai_cost: ImpactCost;
+  source: string;
+  computed_at: string;
+  definitions: Array<string>;
+};
+
+export type ImpactIntervention = {
+  intervention_id: string;
+  opportunity_id: string;
+  correlation_id: string;
+  status: string;
+  state_before_ref: string;
+  state_after_ref: string | null;
+  created_at: string;
+  closed_at: string | null;
+  result_type: string | null;
+  sale_value: string | null;
+  ares_influenced_value: string | null;
+  incremental_value: string | null;
+  currency: string | null;
+  attribution_level: string | null;
+  attribution_method: string | null;
+  observed_at: string | null;
+};
+
+export type ImpactPage = {
+  items: Array<ImpactIntervention>;
+  next_cursor: string | null;
+};
+
 export type ChatCitation = {
   event_id: string;
   event_type?: string | null;
@@ -117,4 +282,63 @@ export type ChatHistory = {
 export type ChatCommand = {
   text: string;
   scope_ref: string;
+};
+
+export type TenantRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TenantPage = {
+  items: Array<TenantRecord>;
+  next_cursor: string | null;
+};
+
+export type EntitlementRecord = {
+  module: string;
+  status: string;
+  granted_at: string;
+  expires_at: string | null;
+};
+
+export type BillingRecord = {
+  state: string;
+  due_since: string | null;
+  grace_until: string | null;
+  reason: string;
+  changed_at: string;
+};
+
+export type BillingCommand = {
+  reason: string;
+  expected_version: number;
+  state: "active" | "past_due" | "degraded";
+  due_since?: string | null;
+  grace_until?: string | null;
+};
+
+export type TenantConfiguration = {
+  tenant: TenantRecord;
+  entitlements: Array<EntitlementRecord>;
+  billing?: BillingRecord | null;
+  quota?: QuotaRecord | null;
+};
+
+export type CreateTenant = {
+  reason: string;
+  name: string;
+  slug: string;
+};
+
+export type SetEntitlement = {
+  reason: string;
+  expected_version: number;
+  module: "stellar" | "ares_connect" | "ares_crm";
+  status: "active" | "suspended" | "revoked";
+  expires_at?: string | null;
 };

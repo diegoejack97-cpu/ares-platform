@@ -49,7 +49,7 @@ class FakeCRMLabClient:
                 status_code=404,
                 code="deal_not_found",
             )
-        return deal
+        return dict(deal)
 
     async def reset(self) -> dict[str, Any]:
         return await self._request("POST", "/v1/admin/reset")
@@ -160,4 +160,4 @@ class FakeCRMLabClient:
                 code=code,
                 retry_after=response.headers.get("Retry-After"),
             )
-        return response.json()
+        return dict(response.json())

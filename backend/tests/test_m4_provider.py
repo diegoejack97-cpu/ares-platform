@@ -161,8 +161,9 @@ def test_http_provider_preserves_missing_money_without_inventing_zero(include_nu
         payload = raw if request.url.path.endswith("deal-001") else {"items": [raw]}
         return httpx.Response(200, json=payload, request=request)
 
-    provider = FakeCRMHTTPProvider("http://testserver", "key",
-                                   transport=httpx.MockTransport(handle))
+    provider = FakeCRMHTTPProvider(
+        "http://testserver", "key", transport=httpx.MockTransport(handle)
+    )
     try:
         deal = provider.get_deal("deal-001")
         page = provider.list_deals()

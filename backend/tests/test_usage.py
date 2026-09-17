@@ -48,7 +48,7 @@ def test_schema_failure_preserves_paid_usage(monkeypatch):
     factory = RecommendationModelFactory(
         api_key="synthetic",
         model_id="gpt-5-mini",
-        budget_guard=SimpleNamespace(check=lambda *args: SimpleNamespace(allowed=True)),
+        budget_guard=SimpleNamespace(reserve=lambda *args: SimpleNamespace(allowed=True)),
         estimated_cost_usd=Decimal("0.01"),
     )
     result = factory.generate(None, {})

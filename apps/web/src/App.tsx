@@ -28,6 +28,18 @@ import { useQuery } from "@tanstack/react-query";
 import { getOpportunities, getApprovals } from "@/features/opportunities/api";
 import { useLiveClock } from "@/lib/live-clock";
 import { AresMark } from "@/components/ares-mark";
+import { BillingNotice } from "@/features/provider/BillingNotice";
+import { LicensePage, QuotaNotice } from "@/features/provider/LicensePage";
+const LeadsPage = lazy(() =>
+  import("@/features/leads/LeadsPage").then((module) => ({
+    default: module.LeadsPage,
+  })),
+);
+const ImpactPage = lazy(() =>
+  import("@/features/impact/ImpactPage").then((module) => ({
+    default: module.ImpactPage,
+  })),
+);
 
 import { useAuth } from "@/features/auth/auth-context";
 import { ApprovalsPage } from "@/features/decisions/approvals-page";
@@ -271,11 +283,30 @@ function App() {
             <span className="nav-copy">Command Center</span>
             <small className="nav-meta">Em breve</small>
           </span>
-          <span className="nav-item future" title="Impacto ARES">
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/licenses"
+            title="Licenças"
+          >
+            <CrosshairIcon aria-hidden />
+            <span className="nav-copy">Licenças</span>
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/leads"
+            title="Entrada de leads"
+          >
+            <CrosshairIcon aria-hidden />
+            <span className="nav-copy">Entrada de leads</span>
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/impact"
+            title="Impacto ARES"
+          >
             <ChartLineUpIcon aria-hidden />
             <span className="nav-copy">Impacto ARES</span>
-            <small className="nav-meta">Em breve</small>
-          </span>
+          </NavLink>
         </nav>
         <div className="sidebar-foot">
           <span className="environment-dot" />
@@ -331,7 +362,26 @@ function App() {
             <SignOutIcon aria-hidden /> Sair
           </button>
         </div>
+        <BillingNotice />
+        <QuotaNotice />
         <Routes>
+          <Route path="/licenses" element={<LicensePage />} />
+          <Route
+            path="/leads"
+            element={
+              <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+                <LeadsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/impact"
+            element={
+              <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+                <ImpactPage />
+              </Suspense>
+            }
+          />
           <Route
             path="/chat"
             element={

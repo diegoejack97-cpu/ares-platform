@@ -25,8 +25,13 @@ from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
 from ares.event_journal.service import EventJournal, InMemoryEventJournal, PostgresEventJournal
 from ares.graph.api import graph_router
+from ares.impact.api import impact_router
 from ares.integrations.api import integration_router
 from ares.intelligence.service import IntelligenceService
+from ares.leads.api import lead_router
+from ares.provider.account import account_router
+from ares.provider.api import install_provider_api
+from ares.provider.billing import billing_status
 from ares.workers.tick import TickWorker
 
 settings = get_settings()
@@ -113,6 +118,7 @@ class LabStageRequest(BaseModel):
 
 
 async def require_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> AuthenticatedUser:
     if credentials is None:
@@ -120,8 +126,19 @@ async def require_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication_required"
         )
     user = await auth_service.authenticate(credentials.credentials)
-    if user is None or user.tenant_id != settings.tenant_id:
+    if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_session")
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        billing = await asyncio.to_thread(billing_status, settings.database_url, user.tenant_id)
+        if billing["degraded"]:
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "billing_degraded",
+                    "message": "Prazo encerrado. Leitura e histórico continuam disponíveis.",
+                    "correlation_id": str(uuid4()),
+                },
+            )
     return user
 
 
@@ -131,6 +148,15 @@ app.include_router(integration_router(settings, require_user))
 app.include_router(agent_router(settings, require_user))
 app.include_router(graph_router(settings, require_user))
 app.include_router(chat_router(settings, require_user))
+app.include_router(impact_router(settings, require_user))
+app.include_router(lead_router(settings, require_user))
+install_provider_api(app, settings)
+app.include_router(account_router(settings, require_user))
+
+
+@app.get("/api/v1/account/billing")
+async def account_billing(user: CurrentUser) -> Any:
+    return await asyncio.to_thread(billing_status, settings.database_url, user.tenant_id)
 
 
 def require_development() -> None:
@@ -147,7 +173,7 @@ FakeCRMLab = Annotated[FakeCRMLabClient, Depends(get_fake_crm_lab)]
 
 
 def require_lab_admin(user: CurrentUser) -> AuthenticatedUser:
-    if user.role != "admin":
+    if user.role != "admin" or user.tenant_id != settings.tenant_id:
         raise HTTPException(status_code=403, detail="admin_required")
     return user
 
@@ -199,7 +225,12 @@ async def receive_fake_crm_webhook(
 
 @app.get("/api/v1/journal/events", response_model=JournalPage)
 async def list_journal_events(_user: CurrentUser) -> JournalPage:
-    return await journal.list_events()
+    scoped = (
+        journal
+        if _user.tenant_id == settings.tenant_id
+        else PostgresEventJournal(settings.database_url, _user.tenant_id)
+    )
+    return await scoped.list_events()
 
 
 @app.post(
@@ -210,6 +241,8 @@ async def list_journal_events(_user: CurrentUser) -> JournalPage:
 async def simulate_fake_crm_event(
     payload: SimulateEventRequest, _user: CurrentUser
 ) -> AcceptedEvent:
+    require_development()
+    require_lab_admin(_user)
     aggregate_id = payload.aggregate_id or f"deal-{uuid4().hex[:8]}"
     now = datetime.now(UTC)
     fixture: dict[str, Any] = {
@@ -232,7 +265,7 @@ async def simulate_fake_crm_event(
     incoming = IncomingCRMEvent(
         provider_event_id=f"fake-{uuid4()}",
         event_type=payload.event_type,
-        aggregate_type=payload.aggregate_type,  # type: ignore[arg-type]
+        aggregate_type=payload.aggregate_type,
         aggregate_id=aggregate_id,
         occurred_at=now,
         data=fixture,
@@ -367,7 +400,11 @@ async def test_fake_crm_lab_fault(
 @app.get("/api/v1/opportunities/analytics")
 async def opportunity_analytics(user: CurrentUser) -> dict[str, Any]:
     """Aggregates over every opportunity, so charts and agents share one population."""
-    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    service = (
+        intelligence
+        if intelligence is not None and user.tenant_id == settings.tenant_id
+        else IntelligenceService(settings.database_url, user.tenant_id)
+    )
     return await service.opportunity_analytics()
 
 
@@ -381,7 +418,11 @@ async def list_opportunities(
     cursor: str | None = None,
     limit: int = Query(default=25, ge=1, le=100),
 ) -> dict[str, Any]:
-    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    service = (
+        intelligence
+        if intelligence is not None and user.tenant_id == settings.tenant_id
+        else IntelligenceService(settings.database_url, user.tenant_id)
+    )
     try:
         return await service.list_opportunities(
             state=state_filter,
@@ -397,7 +438,11 @@ async def list_opportunities(
 
 @app.get("/api/v1/opportunities/{opportunity_id}")
 async def get_opportunity(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
-    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    service = (
+        intelligence
+        if intelligence is not None and user.tenant_id == settings.tenant_id
+        else IntelligenceService(settings.database_url, user.tenant_id)
+    )
     result = await service.get_opportunity(opportunity_id)
     if result is None:
         raise HTTPException(status_code=404, detail="opportunity_not_found")
@@ -418,6 +463,8 @@ async def create_recommendation(
     user: CurrentUser,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
+    if user.tenant_id != settings.tenant_id:
+        raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
     try:
         result = await decisions_for(user).create_recommendation(opportunity_id)
         if result.get("intent_id"):
@@ -453,6 +500,8 @@ async def decide_recommendation(
     user: CurrentUser,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
+    if user.tenant_id != settings.tenant_id:
+        raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
     try:
         result = await decisions_for(user).decide(recommendation_id, command, str(user.user_id))
         if result.get("intent_id"):
@@ -488,7 +537,11 @@ async def get_action(intent_id: UUID, user: CurrentUser) -> dict[str, Any]:
 
 @app.get("/api/v1/opportunities/{opportunity_id}/context")
 async def get_opportunity_context(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
-    service = intelligence or IntelligenceService(settings.database_url, user.tenant_id)
+    service = (
+        intelligence
+        if intelligence is not None and user.tenant_id == settings.tenant_id
+        else IntelligenceService(settings.database_url, user.tenant_id)
+    )
     result = await service.get_context(opportunity_id)
     if result is None:
         raise HTTPException(status_code=404, detail="opportunity_context_not_found")

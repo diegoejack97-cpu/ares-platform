@@ -13,6 +13,9 @@ from ares.event_journal.models import IncomingCRMEvent
 
 
 class FakeCRMProvider:
+    def create_lead(self, payload: dict[str, Any], idempotency_key: str) -> CRMWriteResult:
+        raise NotImplementedError("lead_creation_requires_http_adapter")
+
     def __init__(self, webhook_secret: str) -> None:
         self._secret = webhook_secret.encode()
         self._lock = Lock()

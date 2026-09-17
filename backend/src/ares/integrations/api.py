@@ -18,7 +18,7 @@ def integration_router(settings: Settings, require_user: Callable[..., Any]) -> 
 
     def run(user: AuthenticatedUser, operation: Callable[[PipelineService], Any]) -> Any:
         # The only implemented adapter is the explicit local sandbox, never a pretend client CRM.
-        if settings.environment != "development":
+        if settings.environment != "development" or user.tenant_id != settings.tenant_id:
             raise HTTPException(503, detail={"code": "client_crm_adapter_not_configured"})
         provider = FakeCRMHTTPProvider(
             settings.fake_crm_base_url,

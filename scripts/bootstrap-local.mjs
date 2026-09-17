@@ -82,6 +82,26 @@ const { error: profileError } = await admin.from("profiles").upsert({
   status: "active",
 });
 if (profileError) throw profileError;
+// M6: membership activation fails closed without a seat contract. This synthetic
+// local contract mirrors ai_budget_limits in seed.sql and is never overwritten.
+const { data: quota, error: quotaReadError } = await admin
+  .from("tenant_quotas")
+  .select("tenant_id")
+  .eq("tenant_id", TENANT_ID)
+  .maybeSingle();
+if (quotaReadError) throw quotaReadError;
+if (!quota) {
+  const { error: quotaError } = await admin.from("tenant_quotas").insert({
+    tenant_id: TENANT_ID,
+    seats_limit: 10,
+    ai_daily_budget_brl: 0,
+    ai_monthly_budget_brl: 0,
+    usd_brl_rate: 5,
+    rate_source: "SYNTHETIC local bootstrap rate; not a market quotation",
+    updated_by: user.id,
+  });
+  if (quotaError) throw quotaError;
+}
 const { error: membershipError } = await admin
   .from("memberships")
   .upsert(

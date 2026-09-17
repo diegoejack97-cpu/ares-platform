@@ -103,6 +103,34 @@ $env:ARES_TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55422/po
 python -m pytest backend/tests
 ```
 
+## Piloto sintético da M6
+
+Com Supabase, API e sandbox no ar, o bootstrap cria o operador dedicado do provedor
+(`provider-m6@ares.local`, credencial gravada em `output/runtime/m6-provider-credentials.json`,
+ignorado pelo Git), três outcomes rotulados `[SINTETICO M6]` e a cota do tenant local
+(10 licenças, orçamento de IA zero). Ele só executa contra `localhost`.
+
+```powershell
+npm run m6:bootstrap
+npm run test:e2e:m6 --workspace @ares/web
+npm run test:e2e:m6:provider --workspace @ares/web
+```
+
+O ensaio ao vivo faz login real como admin e como provedor, registra e cancela um convite,
+cria e mescla um lead no FakeCRM, exporta CSV e PDF e valida `/admin`, `/licenses`, `/leads`
+e `/impact` em 1440/700/390 px com axe. Evidências ficam em `output/playwright/m6-live/`.
+
+Criação de lead exige um sandbox com `POST /v1/leads`. Se um sandbox M4 antigo ainda estiver
+rodando na porta 8010, a `bridge` preserva seus dados em memória e acrescenta leads duráveis
+em SQLite; aponte `ARES_FAKE_CRM_BASE_URL` para ela:
+
+```powershell
+python -m uvicorn ares.fake_crm_sandbox.bridge:app --port 8011
+```
+
+O `provider_audit` é imutável e impede apagar tenants já listados pelo provedor. Tenants
+sintéticos que sobrarem de uma rodada de testes interrompida só saem com `npm run db:reset`.
+
 ## Tick em ambiente hospedado
 
 A migration cria o job `ares-tick-every-minute` com `pg_cron` e `pg_net`. Ele permanece inerte enquanto os dois segredos não forem configurados no Vault do Supabase:

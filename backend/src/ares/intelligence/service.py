@@ -402,7 +402,7 @@ class IntelligenceService:
             (self._tenant_id, opportunity_id, content_hash),
         ).fetchone()
         if existing is not None:
-            return existing["id"]
+            return UUID(str(existing["id"]))
         version_row = connection.execute(
             """
             select coalesce(max(snapshot_version), 0) + 1 as next_version
@@ -436,7 +436,7 @@ class IntelligenceService:
         ).fetchone()
         if row is None:
             raise RuntimeError("context_snapshot_insert_failed")
-        return row["id"]
+        return UUID(str(row["id"]))
 
     async def list_opportunities(
         self,
@@ -609,20 +609,22 @@ class IntelligenceService:
                 f"select count(*) as count {base}", (self._tenant_id,)
             ).fetchone()
 
-        return _jsonable(
-            {
-                "stages": [dict(row) for row in stages],
-                "signals": [dict(row) for row in signals],
-                "sla": [dict(row) for row in sla],
-                "opened": [dict(row) for row in opened],
-                "activity": [dict(row) for row in activity],
-                "rhythm": [dict(row) for row in rhythm],
-                "points": [dict(row) for row in points],
-                "total": (total or {}).get("count", 0),
-                "point_cap": 400,
-                "source": "ARES Core / Supabase local",
-                "freshness_at": datetime.now(UTC),
-            }
+        return dict(
+            _jsonable(
+                {
+                    "stages": [dict(row) for row in stages],
+                    "signals": [dict(row) for row in signals],
+                    "sla": [dict(row) for row in sla],
+                    "opened": [dict(row) for row in opened],
+                    "activity": [dict(row) for row in activity],
+                    "rhythm": [dict(row) for row in rhythm],
+                    "points": [dict(row) for row in points],
+                    "total": (total or {}).get("count", 0),
+                    "point_cap": 400,
+                    "source": "ARES Core / Supabase local",
+                    "freshness_at": datetime.now(UTC),
+                }
+            )
         )
 
     async def get_opportunity(self, opportunity_id: UUID) -> dict[str, Any] | None:

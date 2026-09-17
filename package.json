@@ -33,6 +33,7 @@
     "m2:verify": "node scripts/verify-m2.mjs",
     "m3:verify": "node scripts/verify-m3.mjs",
     "m4:sandbox:verify": "node scripts/verify-m4-sandbox.mjs",
+    "m6:bootstrap": "python scripts/bootstrap-m6-local.py",
     "graph:update": "graphify update ."
   },
   "engines": {

@@ -5,6 +5,8 @@ from uuid import UUID
 
 import psycopg
 
+from ares.ai.quotas import settle_on
+
 
 @dataclass(frozen=True)
 class UsageObservation:
@@ -52,6 +54,7 @@ def record_usage(
 def record_usage_on(
     db: psycopg.Connection[Any], tenant: UUID, run_id: UUID, observation: UsageObservation
 ) -> None:
+    settle_on(db, tenant, run_id, observation.cost_usd, observation.status == "not_called")
     inserted = db.execute(
         "insert into public.model_usage(tenant_id,run_id,model_id,status,input_tokens,"
         "output_tokens,cached_input_tokens,cost_usd,pricing_version) "

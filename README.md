@@ -10,9 +10,11 @@ O objetivo não é vender apenas software. É localizar e recuperar valor que j�
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Marco atual:** M4 concluída localmente — mapeamento, sync retomável, reconciliação e write-back
-> auditado entregues sobre o FakeCRM HTTP Sandbox (ver `docs/m4-local-acceptance.md`). Os endpoints M4
-> respondem apenas em `development`; a homologação com o CRM real do cliente segue pendente.
+> **Marco atual:** M6 implementada e verificada localmente — painel do provedor, cotas de IA em BRL,
+> licenças e cobrança com degradação, entrada de leads com deduplicação humana, Impacto ARES e
+> exportações (ver `docs/m6-implementation.md`). M4 e M5 seguem validadas apenas localmente sobre o
+> FakeCRM; a homologação com o CRM real do cliente, o operador real do provedor e a chave OpenAI
+> continuam pendentes.
 
 ## Produtos e módulos
 
@@ -226,6 +228,13 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] jornada M3 validada na API e no navegador, inclusive em viewport móvel.
 - [x] FakeCRM HTTP Sandbox independente com 60 oportunidades sintéticas reproduzíveis;
 - [x] adapter HTTP selecionável por ambiente e contract suite com cursor, idempotência, conflito e falhas;
+- [x] chat com streaming, grafo de evidências e tela de agentes com custo medido (M5);
+- [x] painel do provedor com identidade e sessão dedicadas, auditoria imutável e conflito de versão;
+- [x] cotas de IA em BRL com taxa congelada por reserva, reservas concorrentes e reconciliação;
+- [x] licenças por convite/ativação com limite garantido por trigger; cobrança com prazo e degradação que preserva leitura;
+- [x] entrada de leads idempotente, candidatos de duplicidade, mesclagem humana reversível e criação no FakeCRM;
+- [x] Impacto ARES com definições explícitas, exportação CSV/PDF auditada e piloto sintético local;
+- [ ] operador real do provedor provisionado e moeda das cotas ratificada;
 - [ ] adapter, schema mapping, sync, reconciliação e write-back do CRM real homologados.
 
 ---

@@ -41,7 +41,7 @@ def test_scoped_chat_stream_persists_tools_usage_and_history(fixture, monkeypatc
     service = ChatService(Settings(openai_api_key=SecretStr("synthetic")))
     monkeypatch.setattr(service, "context", lambda *args: context)
     monkeypatch.setattr(
-        "ares.chat.service.AIBudgetGuard.check", lambda *args: SimpleNamespace(allowed=True)
+        "ares.chat.service.AIBudgetGuard.reserve", lambda *args: SimpleNamespace(allowed=True)
     )
 
     @contextmanager

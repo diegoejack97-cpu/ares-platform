@@ -140,6 +140,7 @@ class DecisionService:
                     (self._tenant_id, opportunity_id),
                 )
         context = {
+            "run_id": str(run["id"]),
             "opportunity": {
                 "id": str(opportunity_id),
                 "score": row["score"],
@@ -874,7 +875,7 @@ class DecisionService:
             ),
         ).fetchone()
         assert row is not None
-        return row["id"]
+        return UUID(str(row["id"]))
 
     def _transition(
         self,

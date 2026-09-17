@@ -59,7 +59,7 @@ class FakeCRMHTTPProvider:
 
     def describe_schema(self) -> dict[str, Any]:
         response = self._request("GET", "/v1/schema")
-        return response.json()
+        return dict(response.json())
 
     def get_deal(self, deal_id: str) -> CRMDeal:
         try:
@@ -104,6 +104,10 @@ class FakeCRMHTTPProvider:
             json={"title": title},
             idempotency_key=idempotency_key,
         )
+        return CRMWriteResult.model_validate(response.json())
+
+    def create_lead(self, payload: dict[str, Any], idempotency_key: str) -> CRMWriteResult:
+        response = self._request("POST", "/v1/leads", json=payload, idempotency_key=idempotency_key)
         return CRMWriteResult.model_validate(response.json())
 
     def add_note(self, deal_id: str, body: str, idempotency_key: str) -> CRMWriteResult:

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class CRMCapabilities(BaseModel):
+    create_lead: bool = False
     read_deals: bool = True
     describe_schema: bool = False
     read_changes: bool = False

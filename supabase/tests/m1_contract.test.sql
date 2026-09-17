@@ -44,6 +44,14 @@ insert into public.tenants (id, name, slug) values
   ('21000000-0000-0000-0000-000000000001', 'Tenant One', 'tenant-one'),
   ('21000000-0000-0000-0000-000000000002', 'Tenant Two', 'tenant-two');
 
+-- M6: membership activation fails closed without a seat contract.
+insert into public.tenant_quotas (
+  tenant_id, seats_limit, ai_daily_budget_brl, ai_monthly_budget_brl,
+  usd_brl_rate, rate_source, updated_by
+) values
+  ('21000000-0000-0000-0000-000000000001', 10, 0, 0, 1, 'pgtap synthetic', '10000000-0000-0000-0000-000000000004'),
+  ('21000000-0000-0000-0000-000000000002', 10, 0, 0, 1, 'pgtap synthetic', '10000000-0000-0000-0000-000000000004');
+
 insert into public.memberships (tenant_id, user_id, role) values
   (
     '21000000-0000-0000-0000-000000000001',
