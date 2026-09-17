@@ -6,6 +6,7 @@
 @import "./styles/legacy-layout.css";
 @import "./styles/material.css";
 @import "./styles/observatory.css";
+@import "./styles/console.css";
 
 @custom-variant dark (&:is(.dark *));
 

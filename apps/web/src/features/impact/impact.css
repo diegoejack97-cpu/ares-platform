@@ -1,78 +1,20 @@
-.impact-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0;
+.impact-page .toolbar {
+  align-items: flex-end;
 }
-.impact-actions select {
-  background: var(--well);
+.impact-report .stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.impact-page .data-table td:first-child strong.cell-mono {
   color: var(--ink);
-  padding: 8px;
-  border: 1px solid var(--edge);
+  font-size: 12px;
 }
-.impact-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  margin: 24px 0;
-}
-.impact-kpis section,
-.impact-section {
-  padding: 24px;
-  margin-bottom: 20px;
-}
-.impact-kpis strong {
-  font-size: 26px;
-  overflow-wrap: anywhere;
-}
-.impact-page h2 {
-  font-size: 18px;
-  margin-bottom: 12px;
-}
-.impact-page p {
-  line-height: 1.6;
-}
-.impact-table {
-  overflow-x: auto;
-}
-.impact-table table {
-  width: 100%;
-  text-align: left;
-  border-collapse: collapse;
-}
-.impact-table th,
-.impact-table td {
-  padding: 12px;
-  border-bottom: 1px solid var(--edge);
-}
-.impact-table caption {
-  text-align: left;
-  margin: 12px 0;
-}
-.impact-interventions {
-  list-style: none;
-  padding: 0;
-}
-.impact-interventions li {
-  display: grid;
-  gap: 8px;
-  border-bottom: 1px solid var(--edge);
-  padding: 16px 0;
-  overflow-wrap: anywhere;
-}
-.impact-page a {
-  color: var(--brasa-ink);
-  text-decoration: underline;
-}
-.impact-page [role="alert"] {
-  color: var(--ambar-ink);
-}
-@media (max-width: 800px) {
-  .impact-kpis {
-    grid-template-columns: 1fr;
+@media (max-width: 1100px) {
+  .impact-report .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .impact-section {
-    padding: 16px;
+}
+@media (max-width: 600px) {
+  .impact-report .stat-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

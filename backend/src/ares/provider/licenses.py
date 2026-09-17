@@ -48,6 +48,7 @@ class InvitationRecord(BaseModel):
 
 class MembershipRecord(BaseModel):
     user_id: UUID
+    email: str | None = None
     role: str
     active: bool
     version: int
@@ -123,7 +124,7 @@ class LicenseService:
                 (user.tenant_id, invitation_cursor, invitation_cursor),
             ).fetchall()
             members = db.execute(
-                "select user_id,role,active,version from public.memberships where tenant_id=%s and (%s::uuid is null or user_id>%s) order by user_id limit 51",
+                "select m.user_id,u.email,m.role,m.active,m.version from public.memberships m left join auth.users u on u.id=m.user_id where m.tenant_id=%s and (%s::uuid is null or m.user_id>%s) order by m.user_id limit 51",
                 (user.tenant_id, member_cursor, member_cursor),
             ).fetchall()
             return {

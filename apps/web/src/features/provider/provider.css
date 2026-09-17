@@ -1,47 +1,132 @@
+/* Licenses (tenant) and the provider panel (/admin). Console primitives live in styles/console.css. */
+.license-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 24px 40px;
+  align-items: center;
+  padding: 20px 24px;
+}
+.license-figure {
+  display: grid;
+  gap: 6px;
+}
+.license-figure .stat-value span {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  margin-left: 6px;
+}
+.license-meter {
+  display: grid;
+  gap: 10px;
+}
+
+/* Provider panel: the page lives outside the product shell. */
 .provider-page {
   max-width: 1440px;
   margin: 0 auto;
   min-width: 0;
 }
-.provider-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  margin: 16px 0;
+.provider-page .page-header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: 20px;
+}
+.provider-page .page-header .toolbar a {
+  color: var(--brasa-ink);
+  text-decoration: underline;
+  font-size: 12px;
+  align-self: center;
 }
 .provider-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 20px;
+  align-items: start;
 }
 .provider-section {
   min-width: 0;
-  padding: 24px;
-  margin: 20px 0;
 }
-.provider-section h2 {
-  font-size: 18px;
-  margin-bottom: 16px;
+.provider-section > h2,
+.provider-section > p:first-of-type {
+  padding: 18px 20px 0;
 }
-.provider-section form,
+.provider-section > h2 {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.provider-section > form,
 .provider-login form {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  padding: 16px 20px 20px;
 }
 .provider-section label {
-  font-size: 13px;
-  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
 }
-.provider-section select {
-  padding: 10px;
-  background: var(--well);
-  color: var(--ink);
-  border: 1px solid var(--edge);
+.provider-section form > label {
+  margin-bottom: -6px;
 }
 .provider-section form button {
   justify-self: start;
-  margin-top: 14px;
+  margin-top: 6px;
+}
+.provider-section > ul:not(.provider-tenants) {
+  margin: 0;
+  padding: 0 20px 8px;
+  list-style: none;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.provider-section > p,
+.provider-section > form > p {
+  margin: 0;
+  padding: 0 20px;
+}
+.provider-section > form > p {
+  padding: 0;
+}
+.provider-section > section {
+  border-top: 1px solid var(--edge);
+}
+.provider-section > section > h2 {
+  padding: 18px 20px 0;
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0;
+}
+.provider-section > section > p {
+  padding: 6px 20px 0;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.provider-section > section > form {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px 20px;
+}
+.provider-section > section > form > div {
+  display: grid;
+  gap: 6px;
+}
+.provider-section > section > .provider-note {
+  padding: 0 20px 18px;
+}
+.provider-section > [data-slot="button"] {
+  margin: 16px 20px 0;
+}
+.provider-section > [data-slot="skeleton"] {
+  margin: 16px 20px;
+  width: auto;
+}
+.provider-section > div[role="alert"] {
+  margin: 12px 20px 0;
 }
 .provider-note,
 .provider-section small {
@@ -51,14 +136,16 @@
 }
 .provider-tenants {
   list-style: none;
-  margin: 0;
+  margin: 8px 0 0;
   padding: 0;
 }
 .provider-tenants li {
-  border-bottom: 1px solid var(--edge);
-  padding: 14px 0;
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid var(--edge);
 }
 .provider-tenants button {
   justify-self: start;
@@ -66,15 +153,39 @@
   height: auto;
   text-align: left;
 }
+.provider-tenants button[aria-pressed="true"] {
+  background: var(--well);
+  box-shadow: var(--e-well);
+  color: var(--brasa-ink);
+}
 .provider-tenants span {
-  font-size: 12px;
+  font-size: 11px;
+  font-family: var(--font-data);
   color: var(--ink-3);
   overflow-wrap: anywhere;
 }
-.provider-page [role="alert"],
+.provider-pager {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--edge);
+}
+.provider-page [role="alert"] p,
+.provider-page p[role="alert"],
 .provider-login [role="alert"] {
-  color: var(--ambar-ink);
+  color: var(--brasa-ink);
   overflow-wrap: anywhere;
+  margin: 0;
+}
+.provider-page [role="status"] {
+  color: var(--jade-ink);
+  font-size: 12px;
+  margin: 0;
+}
+.provider-page div[role="alert"] code {
+  display: inline-block;
+  margin-top: 6px;
 }
 .provider-page a,
 .provider-login a {
@@ -85,11 +196,13 @@
   width: 48px;
   height: 48px;
 }
+@media (max-width: 900px) {
+  .license-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 800px) {
   .provider-layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .provider-section {
-    padding: 18px;
   }
 }

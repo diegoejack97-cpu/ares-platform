@@ -362,8 +362,10 @@ function App() {
             <SignOutIcon aria-hidden /> Sair
           </button>
         </div>
-        <BillingNotice />
-        <QuotaNotice />
+        <div className="notice-stack">
+          <BillingNotice />
+          <QuotaNotice />
+        </div>
         <Routes>
           <Route path="/licenses" element={<LicensePage />} />
           <Route

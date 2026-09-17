@@ -198,8 +198,8 @@ function ProviderPanel() {
     },
   });
   return (
-    <main className="workspace provider-page">
-      <header className="page-heading">
+    <main className="workspace console-page provider-page">
+      <header className="page-header">
         <div>
           <span className="eyebrow">NOGUEIRA!IA / ADMINISTRAÇÃO</span>
           <h1>Painel do provedor</h1>
@@ -208,7 +208,7 @@ function ProviderPanel() {
             motivo.
           </p>
         </div>
-        <div className="provider-actions">
+        <div className="toolbar">
           <a href="/radar">Abrir produto</a>
           <Button
             variant="outline"
@@ -258,7 +258,7 @@ function ProviderPanel() {
                   ))}
                 </ul>
               )}
-              <div className="provider-actions">
+              <div className="provider-pager">
                 <Button
                   variant="outline"
                   disabled={!cursor}
@@ -288,13 +288,21 @@ function ProviderPanel() {
                   mutation.mutate(values),
                 )}
               >
-                <label htmlFor="tenant-name">Nome</label>
-                <Input id="tenant-name" {...form.register("name")} />
-                <label htmlFor="tenant-slug">Identificador</label>
-                <Input id="tenant-slug" {...form.register("slug")} />
-                <small>Minúsculas, números e hífens.</small>
-                <label htmlFor="create-reason">Motivo da criação</label>
-                <Input id="create-reason" {...form.register("reason")} />
+                <div className="field">
+                  <label htmlFor="tenant-name">Nome</label>
+                  <Input id="tenant-name" {...form.register("name")} />
+                </div>
+                <div className="field">
+                  <label htmlFor="tenant-slug">Identificador</label>
+                  <Input id="tenant-slug" {...form.register("slug")} />
+                  <span className="field-hint">
+                    Minúsculas, números e hífens.
+                  </span>
+                </div>
+                <div className="field">
+                  <label htmlFor="create-reason">Motivo da criação</label>
+                  <Input id="create-reason" {...form.register("reason")} />
+                </div>
                 {Object.keys(form.formState.errors).length ? (
                   <p role="alert">
                     Preencha nome, identificador válido e motivo com pelo menos

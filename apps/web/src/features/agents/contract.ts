@@ -126,6 +126,7 @@ export type InvitationRecord = {
 
 export type MembershipRecord = {
   user_id: string;
+  email?: string | null;
   role: string;
   active: boolean;
   version: number;

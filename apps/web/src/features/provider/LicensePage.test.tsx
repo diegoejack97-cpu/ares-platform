@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -27,10 +27,18 @@ const licenses: LicenseData = {
       status: "pending",
       version: 1,
     },
+    {
+      id: "10000000-0000-0000-0000-000000000009",
+      email: "antigo@example.invalid",
+      role: "manager",
+      status: "cancelled",
+      version: 2,
+    },
   ],
   memberships: [
     {
       user_id: "20000000-0000-0000-0000-000000000002",
+      email: "admin@example.invalid",
       role: "admin",
       active: true,
       version: 1,
@@ -80,6 +88,8 @@ function mount(element = <LicensePage />) {
     </QueryClientProvider>,
   );
 }
+const row = (text: string) =>
+  within(screen.getByRole("row", { name: new RegExp(text) }));
 
 test("invite registers a reason and never sends e-mail; pending seats count as used", async () => {
   const user = userEvent.setup();
@@ -91,6 +101,8 @@ test("invite registers a reason and never sends e-mail; pending seats count as u
   expect(
     await screen.findByText("2 de 3 licenças ocupadas ou reservadas."),
   ).toBeInTheDocument();
+  expect(screen.getByRole("meter")).toHaveAttribute("aria-valuenow", "2");
+  expect(screen.getByText("1 disponível")).toBeInTheDocument();
   expect(screen.getByText(/O registro não envia e-mail/)).toBeInTheDocument();
   await user.type(screen.getByLabelText("E-mail"), "nova@example.invalid");
   await user.selectOptions(screen.getByLabelText("Papel"), "manager");
@@ -99,7 +111,9 @@ test("invite registers a reason and never sends e-mail; pending seats count as u
     "Onboarding",
   );
   await user.click(screen.getByRole("button", { name: "Registrar convite" }));
-  expect(await screen.findByText("Alteração registrada.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("Alteração registrada e auditada."),
+  ).toBeInTheDocument();
   const invite = calls.find((call) => call.path === "/invitations");
   expect(invite?.init?.method).toBe("POST");
   expect(JSON.parse(String(invite?.init?.body))).toEqual({
@@ -109,42 +123,73 @@ test("invite registers a reason and never sends e-mail; pending seats count as u
   });
 });
 
-test("a full contract disables new invitations", async () => {
+test("a full contract disables new invitations and explains why", async () => {
   serve({ "/licenses": () => ({ body: { ...licenses, used: 3 } }) });
   mount();
   await screen.findByText("3 de 3 licenças ocupadas ou reservadas.");
   expect(
     screen.getByRole("button", { name: "Registrar convite" }),
   ).toBeDisabled();
+  expect(screen.getByText(/Contrato lotado/)).toBeInTheDocument();
 });
 
-test("cancel and activation require a reason and send the expected version", async () => {
+test("rows translate roles and states, and only pending invitations offer actions", async () => {
+  serve({ "/licenses": () => ({ body: licenses }) });
+  mount();
+  await screen.findByText("2 de 3 licenças ocupadas ou reservadas.");
+  const pending = row("convidado@example.invalid");
+  expect(pending.getByText("Vendedor")).toBeInTheDocument();
+  expect(pending.getByText("Pendente")).toBeInTheDocument();
+  expect(pending.getByRole("button", { name: /^Ativar/ })).toBeInTheDocument();
+  const cancelled = row("antigo@example.invalid");
+  expect(cancelled.getByText("Gestor")).toBeInTheDocument();
+  expect(cancelled.getByText("Cancelado")).toBeInTheDocument();
+  expect(cancelled.queryByRole("button")).not.toBeInTheDocument();
+  const member = row("admin@example.invalid");
+  expect(member.getByText("Administrador")).toBeInTheDocument();
+  expect(member.getByText("Ativo")).toBeInTheDocument();
+  expect(
+    member.getByRole("button", { name: "Desativar admin@example.invalid" }),
+  ).toBeInTheDocument();
+});
+
+test("cancel and activation open an inline form that requires a reason", async () => {
   const user = userEvent.setup();
   serve({
     "/licenses": () => ({ body: licenses }),
     "*": () => ({ body: { cancelled: true } }),
   });
   mount();
-  const cancel = await screen.findByRole("button", {
-    name: "Cancelar convidado@example.invalid",
-  });
-  const activate = screen.getByRole("button", {
-    name: "Ativar convidado@example.invalid",
-  });
-  expect(cancel).toBeDisabled();
+  await screen.findByText("2 de 3 licenças ocupadas ou reservadas.");
+  await user.click(
+    screen.getByRole("button", { name: "Ativar convidado@example.invalid" }),
+  );
+  const activate = screen.getByRole("button", { name: "Confirmar ativação" });
+  expect(activate).toBeDisabled();
   await user.type(
     screen.getByLabelText("Justificativa da alteração"),
-    "Duplicado",
+    "Conta verificada",
   );
-  expect(cancel).toBeEnabled();
   expect(activate).toBeDisabled();
   await user.type(
     screen.getByLabelText("ID da conta verificada para ativação"),
     "3f1c2a4e-9b7d-4c1e-8a2b-5d6e7f8a9b0c",
   );
   expect(activate).toBeEnabled();
+  await user.click(
+    screen.getByRole("button", { name: "Cancelar convidado@example.invalid" }),
+  );
+  expect(
+    screen.queryByLabelText("ID da conta verificada para ativação"),
+  ).not.toBeInTheDocument();
+  const cancel = screen.getByRole("button", { name: "Confirmar cancelamento" });
+  expect(cancel).toBeDisabled();
+  await user.type(
+    screen.getByLabelText("Justificativa da alteração"),
+    "Duplicado",
+  );
   await user.click(cancel);
-  await screen.findByText("Alteração registrada.");
+  await screen.findByText("Alteração registrada e auditada.");
   const request = calls.find((call) => call.path.endsWith("/cancel"));
   expect(request?.path).toBe(
     `/invitations/${licenses.invitations[0].id}/cancel`,
@@ -156,17 +201,35 @@ test("cancel and activation require a reason and send the expected version", asy
   });
 });
 
-test("server refusals surface the code and correlation for support", async () => {
+test("server refusals surface a readable message with the correlation", async () => {
   serve({
     "/licenses": () => ({
-      status: 403,
-      body: { detail: { code: "admin_required", correlation_id: "abc-123" } },
+      status: 409,
+      body: {
+        detail: {
+          code: "seat_contract_unconfigured",
+          correlation_id: "abc-123",
+        },
+      },
     }),
   });
   mount();
   expect(
     await screen.findByText(
-      "Operação não concluída: admin_required. Correlação: abc-123.",
+      "Operação não concluída: seat_contract_unconfigured. Correlação: abc-123.",
+    ),
+  ).toBeInTheDocument();
+  cleanup();
+  serve({
+    "/licenses": () => ({
+      status: 403,
+      body: { detail: { code: "admin_required" } },
+    }),
+  });
+  mount();
+  expect(
+    await screen.findByText(
+      "Somente administradores do tenant acessam esta área.",
     ),
   ).toBeInTheDocument();
 });
@@ -203,12 +266,13 @@ test("quota notice distinguishes a zero budget from an 80% warning", async () =>
   });
   mount(<QuotaNotice />);
   expect(
-    await screen.findByText(/atingiram pelo menos 80% do limite/),
+    await screen.findByText(/atingiram pelo menos 80% do contrato/),
   ).toBeInTheDocument();
+  expect(screen.getByText(/R\$\s8,50 hoje/)).toBeInTheDocument();
   cleanup();
   serve({ "/quota": () => ({ body: { configured: false } }) });
   mount(<QuotaNotice />);
   expect(
-    await screen.findByText(/Cota de IA ainda não configurada/),
+    await screen.findByText(/Cota de IA não configurada/),
   ).toBeInTheDocument();
 });

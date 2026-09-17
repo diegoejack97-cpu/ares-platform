@@ -99,9 +99,9 @@ test("synthetic data is disclosed and unproven increments are never shown as zer
     "href",
     "/opportunities/50000000-0000-0000-0000-000000000005",
   );
-  expect(
-    screen.getByText("Resultado ainda não observado", { exact: false }),
-  ).toBeInTheDocument();
+  expect(screen.getByText("Ainda não observado")).toBeInTheDocument();
+  expect(screen.getByText("Encerrada")).toBeInTheDocument();
+  expect(screen.queryByText("closed")).not.toBeInTheDocument();
 });
 
 test("absence of outcomes is explained instead of rendered as zero revenue", async () => {

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -57,12 +57,17 @@ function mount() {
     </QueryClientProvider>,
   );
 }
+const queueRow = async (name: string) =>
+  (await screen.findByText(name, { selector: ".record-row strong" })).closest(
+    "button",
+  )!;
+const review = () => within(screen.getByRole("region", { name: /^Revisar/ }));
 
 test("intake sends normalised contacts with a per-form idempotency key", async () => {
   const user = userEvent.setup();
   vi.mocked(createIntake).mockResolvedValue({ ...lead, id: "new" });
   mount();
-  await screen.findByRole("button", { name: lead.name });
+  await queueRow(lead.name);
   await user.type(screen.getByLabelText("Nome do lead"), "Novo Lead");
   await user.type(
     screen.getByLabelText("Telefone do lead"),
@@ -82,13 +87,23 @@ test("intake sends normalised contacts with a per-form idempotency key", async (
 test("intake requires at least one contact before calling the API", async () => {
   const user = userEvent.setup();
   mount();
-  await screen.findByRole("button", { name: lead.name });
+  await queueRow(lead.name);
   await user.type(screen.getByLabelText("Nome do lead"), "Sem contato");
   await user.click(screen.getByRole("button", { name: "Enviar para triagem" }));
   expect(
-    await screen.findByText("Informe nome e pelo menos um contato válido."),
+    await screen.findByText(
+      "Informe pelo menos um contato: e-mail ou telefone.",
+    ),
   ).toBeInTheDocument();
   expect(createIntake).not.toHaveBeenCalled();
+});
+
+test("queue rows show contact and a readable status, never the raw code", async () => {
+  mount();
+  const row = await queueRow(lead.name);
+  expect(within(row).getByText("maria@example.invalid")).toBeInTheDocument();
+  expect(within(row).getByText("Pendente")).toBeInTheDocument();
+  expect(within(row).queryByText("pending")).not.toBeInTheDocument();
 });
 
 test("review lists candidates and merge needs both a target and a reason", async () => {
@@ -99,18 +114,17 @@ test("review lists candidates and merge needs both a target and a reason", async
     version: 2,
   });
   mount();
-  await user.click(await screen.findByRole("button", { name: lead.name }));
-  expect(
-    await screen.findByText("Maria Sintetica · Similaridade 92%"),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText("Nome semelhante · E-mail idêntico"),
-  ).toBeInTheDocument();
-  const merge = screen.getByRole("button", { name: "Mesclar com selecionado" });
+  await user.click(await queueRow(lead.name));
+  const panel = review();
+  expect(await panel.findByText("Maria Sintetica")).toBeInTheDocument();
+  expect(panel.getByText("92%")).toBeInTheDocument();
+  expect(panel.getByText("Nome semelhante")).toBeInTheDocument();
+  expect(panel.getByText("E-mail idêntico")).toBeInTheDocument();
+  const merge = panel.getByRole("button", { name: "Mesclar com selecionado" });
   expect(merge).toBeDisabled();
-  await user.type(screen.getByLabelText("Motivo da decisão"), "Mesmo contato");
+  await user.type(panel.getByLabelText("Motivo da decisão"), "Mesmo contato");
   expect(merge).toBeDisabled();
-  await user.click(screen.getByRole("radio"));
+  await user.click(panel.getByRole("radio"));
   expect(merge).toBeEnabled();
   await user.click(merge);
   expect(resolveLead).toHaveBeenCalledWith(lead.id, {
@@ -129,14 +143,16 @@ test("merged leads offer undo and no longer offer create, merge or discard", asy
     can_create: true,
   });
   mount();
-  await user.click(await screen.findByRole("button", { name: lead.name }));
-  expect(await screen.findByText(/Estado: merged\./)).toBeInTheDocument();
+  await user.click(await queueRow(lead.name));
+  const panel = review();
+  expect(await panel.findByText("Mesclado")).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "Desfazer mesclagem" }),
+    panel.getByRole("button", { name: "Desfazer mesclagem" }),
   ).toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "Confirmar criação no CRM" }),
+    panel.queryByRole("button", { name: "Confirmar criação no CRM" }),
   ).not.toBeInTheDocument();
+  expect(panel.getByRole("radio")).toBeDisabled();
 });
 
 test("creation stays unavailable when the connected CRM lacks the capability", async () => {
@@ -147,14 +163,15 @@ test("creation stays unavailable when the connected CRM lacks the capability", a
     can_create: false,
   });
   mount();
-  await user.click(await screen.findByRole("button", { name: lead.name }));
+  await user.click(await queueRow(lead.name));
+  const panel = review();
   expect(
-    await screen.findByText(
+    await panel.findByText(
       "O CRM conectado não oferece criação de lead. A ação está indisponível.",
     ),
   ).toBeInTheDocument();
-  await user.type(screen.getByLabelText("Motivo da decisão"), "Tentativa");
+  await user.type(panel.getByLabelText("Motivo da decisão"), "Tentativa");
   expect(
-    screen.getByRole("button", { name: "Confirmar criação no CRM" }),
+    panel.getByRole("button", { name: "Confirmar criação no CRM" }),
   ).toBeDisabled();
 });
