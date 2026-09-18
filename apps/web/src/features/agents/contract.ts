@@ -343,3 +343,230 @@ export type SetEntitlement = {
   status: "active" | "suspended" | "revoked";
   expires_at?: string | null;
 };
+
+export type CommandCenterWindow = {
+  since: string;
+  until: string;
+  days: number;
+};
+
+export type CommandCenterScope = {
+  mode: "tenant" | "own";
+  role: string;
+  owner_user_id: string | null;
+};
+
+export type CommandCenterCapabilities = {
+  approve: boolean;
+  assign: boolean;
+  fix_connection: boolean;
+};
+
+export type ValueAtRisk = {
+  currency: string | null;
+  total: string | null;
+  count: number;
+  missing: number;
+};
+
+export type QueueItem = {
+  opportunity_id: string;
+  title: string | null;
+  state: string;
+  priority: number;
+  score: string | null;
+  sla_at: string | null;
+  owner_user_id: string | null;
+  primary_signal_type: string | null;
+  signal_count: number;
+  deal_value: string | null;
+  currency: string | null;
+  pending_approval_id: string | null;
+};
+
+export type ApprovalItem = {
+  approval_id: string;
+  opportunity_id: string;
+  title: string | null;
+  urgency: string | null;
+  required_role: string;
+  expires_at: string | null;
+  created_at: string;
+};
+
+export type ApprovalsBlock = {
+  pending: number;
+  expiring_within_6h: number;
+  items_limit: number;
+  items: Array<ApprovalItem>;
+};
+
+export type FailedActionItem = {
+  execution_id: string;
+  opportunity_id: string;
+  title: string | null;
+  action_kind: string | null;
+  attempts: number;
+  finished_at: string | null;
+  correlation_id: string;
+};
+
+export type FailedActionsBlock = {
+  count: number;
+  items_limit: number;
+  items: Array<FailedActionItem>;
+};
+
+export type ConnectionItem = {
+  connection_id: string;
+  provider: string;
+  status: string;
+  last_sync_at: string | null;
+};
+
+export type ConnectionsBlock = {
+  total: number;
+  degraded: number;
+  revoked: number;
+  items: Array<ConnectionItem>;
+};
+
+export type NowBlock = {
+  open_at_risk: number;
+  critical: number;
+  sla_overdue: number;
+  sla_next_6h: number;
+  sla_missing: number;
+  without_owner: number;
+  awaiting_decision: number;
+  value_at_risk: Array<ValueAtRisk>;
+  queue: Array<QueueItem>;
+  queue_limit: number;
+  approvals: ApprovalsBlock;
+  failed_actions: FailedActionsBlock;
+  connections: ConnectionsBlock;
+  freshness_at: string | null;
+};
+
+export type CommandCenterImpact = {
+  window: ImpactWindow;
+  counts: ImpactCounts;
+  amounts: Array<ImpactAmount>;
+  ai_cost: ImpactCost | null;
+  source: string;
+  computed_at: string;
+  definitions: Array<string>;
+};
+
+export type TrendSeries = {
+  key: string;
+  label: string;
+  values: Array<number>;
+};
+
+export type TrendsBlock = {
+  days: Array<string>;
+  series: Array<TrendSeries>;
+  freshness_at: string | null;
+};
+
+export type FunnelStage = {
+  state: string;
+  label: string;
+  reached: number;
+};
+
+export type FunnelBlock = {
+  cohort: number;
+  stages: Array<FunnelStage>;
+};
+
+export type SignalType = {
+  signal_type: string;
+  severity: number;
+  total: number;
+};
+
+export type SignalCell = {
+  day: string;
+  signal_type: string;
+  count: number;
+};
+
+export type SignalsBlock = {
+  total: number;
+  without_opportunity: number;
+  days: Array<string>;
+  types: Array<SignalType>;
+  cells: Array<SignalCell>;
+  freshness_at: string | null;
+};
+
+export type HeatmapCell = {
+  weekday: number;
+  band: number;
+  count: number;
+};
+
+export type HeatmapBlock = {
+  total: number;
+  timezone: string;
+  cells: Array<HeatmapCell>;
+};
+
+export type ActivityItem = {
+  kind: "state" | "decision" | "action" | "outcome";
+  occurred_at: string;
+  actor_type: string | null;
+  opportunity_id: string | null;
+  title: string | null;
+  label: string | null;
+  detail: string | null;
+  attribution_level: string | null;
+  correlation_id: string | null;
+};
+
+export type ActivityBlock = {
+  limit: number;
+  truncated: boolean;
+  items: Array<ActivityItem>;
+};
+
+export type CoverageBlock = {
+  opportunities: number;
+  opportunities_with_owner: number;
+  opportunities_with_sla: number;
+  deals_with_value: number;
+  signals_with_opportunity: number;
+  synthetic_outcomes: number;
+  ai_runs: number | null;
+  ai_measured_runs: number | null;
+};
+
+export type MetricDefinition = {
+  key: string;
+  label: string;
+  formula: string;
+  tables: Array<string>;
+  period: string;
+  attribution_level: string | null;
+  attribution: string;
+};
+
+export type CommandCenterSummary = {
+  window: CommandCenterWindow;
+  scope: CommandCenterScope;
+  capabilities: CommandCenterCapabilities;
+  now: NowBlock;
+  impact: CommandCenterImpact;
+  trends: TrendsBlock;
+  funnel: FunnelBlock;
+  signals: SignalsBlock;
+  heatmap: HeatmapBlock;
+  activity: ActivityBlock;
+  coverage: CoverageBlock;
+  definitions: Array<MetricDefinition>;
+  source: string;
+  freshness_at: string | null;
+  computed_at: string;
+};

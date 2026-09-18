@@ -15,6 +15,17 @@ class ImpactDenied(Exception):
     pass
 
 
+SOURCE = "Supabase/PostgreSQL — outcomes e trilha de intervenções"
+DEFINITIONS: tuple[str, ...] = (
+    "Em risco: oportunidades abertas na data da consulta; não é uma reconstrução histórica.",
+    "Trabalhadas: oportunidades com intervenção aberta no período.",
+    "Valores: último outcome observado por oportunidade no período, separados por moeda.",
+    "Recuperadas: último outcome com result_type=recovered. Venda observada exige sale_value informado.",
+    "Valor influenciado não prova causalidade. Incremental permanece não comprovado sem método e evidência registrados.",
+    "Custo de IA em USD: apenas uso medido; cobertura parcial quando há execuções sem custo observado.",
+)
+
+
 class ImpactService:
     def __init__(self, database_url: str):
         self.database_url = database_url
@@ -40,43 +51,59 @@ class ImpactService:
             db.execute("set transaction isolation level repeatable read, read only")
             db.execute("set local statement_timeout='10s'")
             self.authorize(db, user)
-            counts = db.execute(
-                "select count(*) filter(where o.state<>'closed') as at_risk, "
-                "count(*) filter(where exists(select 1 from public.ares_interventions i where i.tenant_id=o.tenant_id and i.opportunity_id=o.id and i.created_at>=%s and i.created_at<%s)) as worked "
-                "from public.ares_opportunities o where o.tenant_id=%s and o.opened_at<%s",
-                (since, until, user.tenant_id, until),
-            ).fetchone()
-            # Most recent outcome per opportunity prevents summing repeated observations.
-            amounts = db.execute(
-                "with latest as (select distinct on (opportunity_id) * from public.outcomes where tenant_id=%s and observed_at>=%s and observed_at<%s order by opportunity_id,observed_at desc,id desc) "
-                "select currency,count(*) observations,count(*) filter(where source_ref='m6-synthetic-pilot') synthetic_observations,count(*) filter(where sale_value is not null) sales_observed, "
-                "count(*) filter(where result_type='recovered') recovered,sum(sale_value) sale_value,"
-                "sum(ares_influenced_value) filter(where attribution_level in ('influenced','incremental_proven')) ares_influenced_value,"
-                "sum(incremental_value) filter(where attribution_level='incremental_proven' and nullif(trim(attribution_method),'') is not null) incremental_value,"
-                "max(observed_at) freshness_at from latest group by currency order by currency nulls last",
-                (user.tenant_id, since, until),
-            ).fetchall()
-            costs = db.execute(
-                "select count(*) runs,count(u.cost_usd) measured_runs,sum(u.cost_usd) cost_usd "
-                "from public.agent_runs r left join public.model_usage u on u.tenant_id=r.tenant_id and u.run_id=r.id "
-                "where r.tenant_id=%s and r.started_at>=%s and r.started_at<%s",
-                (user.tenant_id, since, until),
-            ).fetchone()
+            return self.snapshot(db, user.tenant_id, since, until)
+
+    def snapshot(
+        self,
+        db: psycopg.Connection[Any],
+        tenant_id: UUID,
+        since: datetime,
+        until: datetime,
+        owner_user_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """The Impacto ARES figures on an already-authorized connection.
+
+        `owner_user_id` narrows the population to one seller's opportunities; the
+        Command Center uses it for the seller scope. With None the predicate is
+        `true` and the join to opportunities keeps cardinality, so `/impact/summary`
+        reads exactly what it read before this extraction.
+        """
+        params = {"tenant": tenant_id, "since": since, "until": until, "owner": owner_user_id}
+        counts = db.execute(
+            "select count(*) filter(where o.state<>'closed') as at_risk, "
+            "count(*) filter(where exists(select 1 from public.ares_interventions i where i.tenant_id=o.tenant_id and i.opportunity_id=o.id and i.created_at>=%(since)s and i.created_at<%(until)s)) as worked "
+            "from public.ares_opportunities o where o.tenant_id=%(tenant)s and o.opened_at<%(until)s "
+            "and (%(owner)s::uuid is null or o.owner_user_id=%(owner)s)",
+            params,
+        ).fetchone()
+        # Most recent outcome per opportunity prevents summing repeated observations.
+        amounts = db.execute(
+            "with latest as (select distinct on (x.opportunity_id) x.* from public.outcomes x "
+            "join public.ares_opportunities o on o.tenant_id=x.tenant_id and o.id=x.opportunity_id "
+            "where x.tenant_id=%(tenant)s and x.observed_at>=%(since)s and x.observed_at<%(until)s "
+            "and (%(owner)s::uuid is null or o.owner_user_id=%(owner)s) "
+            "order by x.opportunity_id,x.observed_at desc,x.id desc) "
+            "select currency,count(*) observations,count(*) filter(where source_ref='m6-synthetic-pilot') synthetic_observations,count(*) filter(where sale_value is not null) sales_observed, "
+            "count(*) filter(where result_type='recovered') recovered,sum(sale_value) sale_value,"
+            "sum(ares_influenced_value) filter(where attribution_level in ('influenced','incremental_proven')) ares_influenced_value,"
+            "sum(incremental_value) filter(where attribution_level='incremental_proven' and nullif(trim(attribution_method),'') is not null) incremental_value,"
+            "max(observed_at) freshness_at from latest group by currency order by currency nulls last",
+            params,
+        ).fetchall()
+        costs = db.execute(
+            "select count(*) runs,count(u.cost_usd) measured_runs,sum(u.cost_usd) cost_usd "
+            "from public.agent_runs r left join public.model_usage u on u.tenant_id=r.tenant_id and u.run_id=r.id "
+            "where r.tenant_id=%s and r.started_at>=%s and r.started_at<%s",
+            (tenant_id, since, until),
+        ).fetchone()
         return {
-            "window": {"since": since, "until": until, "days": days},
+            "window": {"since": since, "until": until, "days": (until - since).days},
             "counts": counts,
             "amounts": amounts,
             "ai_cost": costs,
-            "source": "Supabase/PostgreSQL — outcomes e trilha de intervenções",
+            "source": SOURCE,
             "computed_at": until,
-            "definitions": [
-                "Em risco: oportunidades abertas na data da consulta; não é uma reconstrução histórica.",
-                "Trabalhadas: oportunidades com intervenção aberta no período.",
-                "Valores: último outcome observado por oportunidade no período, separados por moeda.",
-                "Recuperadas: último outcome com result_type=recovered. Venda observada exige sale_value informado.",
-                "Valor influenciado não prova causalidade. Incremental permanece não comprovado sem método e evidência registrados.",
-                "Custo de IA em USD: apenas uso medido; cobertura parcial quando há execuções sem custo observado.",
-            ],
+            "definitions": list(DEFINITIONS),
         }
 
     def interventions(

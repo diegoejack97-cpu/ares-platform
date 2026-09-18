@@ -35,6 +35,11 @@ const LeadsPage = lazy(() =>
     default: module.LeadsPage,
   })),
 );
+const CommandCenterPage = lazy(() =>
+  import("@/features/command-center/CommandCenterPage").then((module) => ({
+    default: module.CommandCenterPage,
+  })),
+);
 const ImpactPage = lazy(() =>
   import("@/features/impact/ImpactPage").then((module) => ({
     default: module.ImpactPage,
@@ -278,11 +283,14 @@ function App() {
             <CpuIcon aria-hidden />
             <span className="nav-copy">Chat ARES</span>
           </NavLink>
-          <span className="nav-item future" title="Command Center">
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/command-center"
+            title="Command Center"
+          >
             <GaugeIcon aria-hidden />
             <span className="nav-copy">Command Center</span>
-            <small className="nav-meta">Em breve</small>
-          </span>
+          </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
             to="/licenses"
@@ -367,6 +375,20 @@ function App() {
           <QuotaNotice />
         </div>
         <Routes>
+          <Route
+            path="/command-center"
+            element={
+              <Suspense
+                fallback={
+                  <main className="workspace route-loading" aria-busy="true">
+                    Preparando o Command Center…
+                  </main>
+                }
+              >
+                <CommandCenterPage />
+              </Suspense>
+            }
+          />
           <Route path="/licenses" element={<LicensePage />} />
           <Route
             path="/leads"

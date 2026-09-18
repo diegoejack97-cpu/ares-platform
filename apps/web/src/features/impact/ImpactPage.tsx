@@ -13,43 +13,18 @@ import {
   StatTile,
   StatusBadge,
   shortId,
-  type Tone,
 } from "@/components/console";
 import type { ImpactIntervention } from "@/features/agents/contract";
 import { impactSummary, impactPage, downloadImpact } from "./api";
+import {
+  attributionLabels,
+  compact,
+  interventionStatus,
+  money,
+  resultLabels,
+  when,
+} from "./format";
 import "./impact.css";
-
-const money = (amount: string | number | null, currency: string | null) =>
-  amount === null
-    ? null
-    : `${currency ?? "Moeda ausente"} ${Number(amount).toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-const compact = (value: number) =>
-  value.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
-const when = (value: string | null) =>
-  value ? new Date(value).toLocaleDateString("pt-BR") : null;
-
-const interventionStatus: Record<string, { tone: Tone; label: string }> = {
-  open: { tone: "warning", label: "Aberta" },
-  deciding: { tone: "warning", label: "Em decisão" },
-  executing: { tone: "info", label: "Executando" },
-  observing: { tone: "info", label: "Observando" },
-  closed: { tone: "neutral", label: "Encerrada" },
-  cancelled: { tone: "neutral", label: "Cancelada" },
-};
-const resultLabels: Record<string, string> = {
-  sale_observed: "Venda observada",
-  recovered: "Recuperada",
-  action_executed: "Ação executada",
-};
-const attributionLabels: Record<string, string> = {
-  observed: "observado",
-  associated: "associado",
-  influenced: "influenciado",
-  incremental_proven: "incremental comprovado",
-};
 
 function Result({ row }: { row: ImpactIntervention }) {
   if (!row.result_type)

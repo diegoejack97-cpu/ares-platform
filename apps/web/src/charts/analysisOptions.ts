@@ -5,6 +5,7 @@ import {
   aresTooltip,
   categoryAxis,
   raisedBar,
+  raisedBarEmphasis,
   shade,
   tint,
   valueAxis,
@@ -50,7 +51,11 @@ export function trendOption(
           right: 0,
           itemWidth: 14,
           itemHeight: 2,
-          textStyle: { color: tokens.ink2, fontSize: 10, fontFamily: tokens.font },
+          textStyle: {
+            color: tokens.ink2,
+            fontSize: 10,
+            fontFamily: tokens.font,
+          },
           data: spec.series.map((entry) => entry.label),
         },
     tooltip: {
@@ -107,7 +112,9 @@ export function trendOption(
         borderWidth: 1.5,
       },
       areaStyle:
-        form === "area" && single ? { color: areaFill(entry.color) } : undefined,
+        form === "area" && single
+          ? { color: areaFill(entry.color) }
+          : undefined,
     })),
   };
 }
@@ -207,7 +214,9 @@ export function heatmapOption(
       itemHeight: 90,
       text: [`${max}`, "0"],
       textStyle: { color: tokens.ink3, fontSize: 10, fontFamily: tokens.font },
-      inRange: { color: [tokens.well, tint(spec.base, 0.1), shade(spec.base, 0.3)] },
+      inRange: {
+        color: [tokens.well, tint(spec.base, 0.1), shade(spec.base, 0.3)],
+      },
     },
     series: [
       {
@@ -215,7 +224,11 @@ export function heatmapOption(
         type: "heatmap",
         name: spec.measure,
         data: spec.cells,
-        itemStyle: { borderColor: tokens.edgeDark, borderWidth: 1, borderRadius: 2 },
+        itemStyle: {
+          borderColor: tokens.edgeDark,
+          borderWidth: 1,
+          borderRadius: 2,
+        },
         emphasis: { itemStyle: { borderColor: tokens.ink, borderWidth: 1.5 } },
         progressive: 0,
       },
@@ -277,7 +290,11 @@ export function matrixOption(
       name: spec.xName,
       nameLocation: "middle",
       nameGap: 22,
-      nameTextStyle: { color: tokens.ink3, fontSize: 10, fontFamily: tokens.font },
+      nameTextStyle: {
+        color: tokens.ink3,
+        fontSize: 10,
+        fontFamily: tokens.font,
+      },
       axisLabel: {
         color: tokens.ink2,
         fontSize: 10,
@@ -290,7 +307,11 @@ export function matrixOption(
       name: spec.yName,
       nameLocation: "middle",
       nameGap: 44,
-      nameTextStyle: { color: tokens.ink3, fontSize: 10, fontFamily: tokens.font },
+      nameTextStyle: {
+        color: tokens.ink3,
+        fontSize: 10,
+        fontFamily: tokens.font,
+      },
       axisLabel: {
         color: tokens.ink2,
         fontSize: 10,
@@ -347,5 +368,97 @@ export function matrixOption(
           : undefined,
       },
     ],
+  };
+}
+
+/* -------------------------------------------------------------- stacked --- */
+
+export interface StackedSeries {
+  key: string;
+  label: string;
+  color: string;
+  /** One value per category; null stays null so a gap is never drawn as zero. */
+  values: Array<number | null>;
+}
+
+export interface StackedSpec {
+  categories: string[];
+  series: StackedSeries[];
+  measure: string;
+  format: (value: number) => string;
+  stack: string;
+}
+
+/**
+ * Composition over categories. Segments stack on one baseline and keep square
+ * corners: a rounded segment would read as its own bar and hide the join.
+ */
+export function stackedOption(
+  form: ChartForm,
+  spec: StackedSpec,
+  tokens: AresThemeTokens,
+): EChartsCoreOption {
+  const horizontal = form === "bar";
+  const category = categoryAxis(tokens, spec.categories);
+  const value = {
+    ...valueAxis(tokens),
+    axisLabel: {
+      color: tokens.ink2,
+      fontSize: 11,
+      fontFamily: tokens.font,
+      formatter: (raw: number) => spec.format(raw),
+    },
+  };
+  return {
+    textStyle: { fontFamily: tokens.font, color: tokens.ink },
+    grid: { left: 46, right: 16, top: 34, bottom: 26 },
+    legend: {
+      show: true,
+      top: 0,
+      right: 8,
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: tokens.ink2, fontSize: 10, fontFamily: tokens.font },
+      data: spec.series.map((entry) => entry.label),
+    },
+    tooltip: {
+      ...aresTooltip(tokens),
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (params: unknown) => {
+        const rows = (Array.isArray(params) ? params : [params]) as Array<{
+          seriesName: string;
+          value: number | null;
+          axisValueLabel?: string;
+        }>;
+        const present = rows.filter(
+          (row) => row.value !== null && row.value !== undefined,
+        );
+        const total = present.reduce((sum, row) => sum + Number(row.value), 0);
+        const lines = present.map(
+          (row) =>
+            `${row.seriesName}: ${spec.format(Number(row.value))} ${spec.measure}`,
+        );
+        return [
+          rows[0]?.axisValueLabel ?? "",
+          ...lines,
+          `Total do dia: ${spec.format(total)}`,
+        ]
+          .filter(Boolean)
+          .join("<br/>");
+      },
+    },
+    xAxis: horizontal ? value : category,
+    yAxis: horizontal ? category : value,
+    series: spec.series.map((entry) => ({
+      id: entry.key,
+      name: entry.label,
+      type: "bar",
+      stack: spec.stack,
+      data: entry.values,
+      barMaxWidth: 28,
+      itemStyle: { ...raisedBar(entry.color, tokens), borderRadius: 0 },
+      emphasis: raisedBarEmphasis(tokens),
+    })),
   };
 }

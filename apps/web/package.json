@@ -16,6 +16,7 @@
     "test:e2e:live": "node scripts/verify-live-data.cjs",
     "test:e2e:m6": "node scripts/verify-m6-live.cjs",
     "test:e2e:m6:provider": "node scripts/verify-m6-provider.cjs",
+    "test:e2e:command-center": "node scripts/verify-command-center.cjs",
     "preview": "vite preview"
   },
   "dependencies": {

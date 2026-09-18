@@ -12,7 +12,8 @@ O objetivo não é vender apenas software. É localizar e recuperar valor que j�
 >
 > **Marco atual:** M6 implementada e verificada localmente — painel do provedor, cotas de IA em BRL,
 > licenças e cobrança com degradação, entrada de leads com deduplicação humana, Impacto ARES e
-> exportações (ver `docs/m6-implementation.md`). M4 e M5 seguem validadas apenas localmente sobre o
+> exportações (ver `docs/m6-implementation.md`); Command Center entregue em 18/09 sobre os mesmos
+> dados (ver `docs/command-center.md`). M4 e M5 seguem validadas apenas localmente sobre o
 > FakeCRM; a homologação com o CRM real do cliente, o operador real do provedor e a chave OpenAI
 > continuam pendentes.
 
@@ -234,6 +235,7 @@ Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI
 - [x] licenças por convite/ativação com limite garantido por trigger; cobrança com prazo e degradação que preserva leitura;
 - [x] entrada de leads idempotente, candidatos de duplicidade, mesclagem humana reversível e criação no FakeCRM;
 - [x] Impacto ARES com definições explícitas, exportação CSV/PDF auditada e piloto sintético local;
+- [x] Command Center: bloco Agora, Impacto ARES reutilizado, análises com tabela alternativa, trilha e definições;
 - [ ] operador real do provedor provisionado e moeda das cotas ratificada;
 - [ ] adapter, schema mapping, sync, reconciliação e write-back do CRM real homologados.
 

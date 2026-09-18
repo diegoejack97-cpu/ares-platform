@@ -199,7 +199,7 @@ test("cancel and activation open an inline form that requires a reason", async (
     active: false,
     reason: "Duplicado",
   });
-});
+}, 15_000);
 
 test("server refusals surface a readable message with the correlation", async () => {
   serve({

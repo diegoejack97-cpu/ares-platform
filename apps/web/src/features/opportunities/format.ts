@@ -13,12 +13,19 @@ export const signalLabels: Record<string, string> = {
 export function money(value: unknown, currency = "BRL") {
   const numeric = finiteNumber(value);
   if (numeric === null) return "Valor não informado";
-  try { return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(numeric); }
-  catch { return `${numeric.toLocaleString("pt-BR")} (moeda não informada)`; }
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency,
+    }).format(numeric);
+  } catch {
+    return `${numeric.toLocaleString("pt-BR")} (moeda não informada)`;
+  }
 }
 
 export function dateTime(value: string | null) {
-  if (!value || !Number.isFinite(Date.parse(value))) return "Data não informada";
+  if (!value || !Number.isFinite(Date.parse(value)))
+    return "Data não informada";
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
@@ -31,6 +38,12 @@ export function slaLabel(value: string | null, now = Date.now()) {
   const overdue = diff < 0;
   const seconds = Math.floor(Math.abs(diff) / 1_000);
   const minutes = Math.floor(seconds / 60);
-  const amount = minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min` : `${minutes} min ${String(seconds % 60).padStart(2, "0")} s`;
+  const amount =
+    minutes >= 60
+      ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`
+      : `${minutes} min ${String(seconds % 60).padStart(2, "0")} s`;
   return overdue ? `Vencido há ${amount}` : `Vence em ${amount}`;
 }
+
+/** Priority 0 is the engine's highest urgency; the Radar and the Command Center share the words. */
+export const priorityLabels = ["Crítica", "Alta", "Média", "Baixa"];

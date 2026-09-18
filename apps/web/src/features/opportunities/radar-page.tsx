@@ -27,7 +27,7 @@ import { useLiveClock } from "@/lib/live-clock";
 import { safeSum } from "@/lib/numbers";
 import { AresMark } from "@/components/ares-mark";
 import { getOpportunities, getOpportunityAnalytics } from "./api";
-import { money, signalLabels } from "./format";
+import { money, priorityLabels, signalLabels } from "./format";
 import { RiskDistributionChart } from "./risk-distribution-chart";
 import { ScoreBar } from "./score-bar";
 import type { OpportunityListItem } from "./types";
@@ -40,7 +40,6 @@ const RadarIntelligenceCharts = lazy(() =>
   })),
 );
 
-const priorityLabels = ["Crítica", "Alta", "Média", "Baixa"];
 const emptyItems: OpportunityListItem[] = [];
 const ROW_BATCH = 5;
 

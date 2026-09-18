@@ -117,6 +117,7 @@ ignorado pelo Git), três outcomes rotulados `[SINTETICO M6]` e a cota do tenant
 npm run m6:bootstrap
 npm run test:e2e:m6 --workspace @ares/web
 npm run test:e2e:m6:provider --workspace @ares/web
+npm run test:e2e:command-center --workspace @ares/web
 ```
 
 O ensaio ao vivo faz login real como admin e como provedor, registra e cancela um convite,

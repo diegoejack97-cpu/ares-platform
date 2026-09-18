@@ -15,6 +15,7 @@ from ares.agents.api import agent_router
 from ares.auth.models import AuthenticatedUser
 from ares.auth.service import SupabaseAuthService
 from ares.chat.api import chat_router
+from ares.command_center.api import command_center_router
 from ares.config import get_settings
 from ares.connectors.fake_crm import FakeCRMProvider
 from ares.connectors.fake_crm_lab import FakeCRMLabClient
@@ -149,6 +150,7 @@ app.include_router(agent_router(settings, require_user))
 app.include_router(graph_router(settings, require_user))
 app.include_router(chat_router(settings, require_user))
 app.include_router(impact_router(settings, require_user))
+app.include_router(command_center_router(settings, require_user))
 app.include_router(lead_router(settings, require_user))
 install_provider_api(app, settings)
 app.include_router(account_router(settings, require_user))

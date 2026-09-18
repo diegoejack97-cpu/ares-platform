@@ -128,6 +128,26 @@ export function StatTile({
   );
 }
 
+/** Provenance for one block: period, source, freshness, attribution. */
+export function MetaRow({
+  items,
+  label,
+}: {
+  items: Array<[string, ReactNode]>;
+  label?: string;
+}) {
+  return (
+    <dl className="meta-row" aria-label={label}>
+      {items.map(([term, value]) => (
+        <div key={term}>
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export const roleLabels: Record<string, string> = {
   admin: "Administrador",
   manager: "Gestor",

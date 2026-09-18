@@ -661,3 +661,180 @@ details.panel[open] > summary {
   color: var(--brasa-ink);
   border-color: color-mix(in srgb, var(--brasa) 50%, var(--edge));
 }
+
+/* Provenance row: period, source, freshness and attribution for one block. */
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  font-size: var(--type-label);
+  color: var(--ink-2);
+}
+.meta-row > div {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+.meta-row dt {
+  color: var(--ink-3);
+}
+.meta-row dd {
+  margin: 0;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.meta-row dd .freshness-chip {
+  font-family: var(--font);
+}
+
+/* Metric strip: one row of labelled figures, dividers instead of cards. */
+.metric-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--edge);
+}
+.metric-strip > li {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px 16px;
+  min-width: 0;
+  border-inline-start: 1px solid var(--edge);
+}
+.metric-strip > li:first-child {
+  border-inline-start: 0;
+}
+.metric-value {
+  font-size: var(--type-section);
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.metric-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: var(--type-label);
+  line-height: 1.5;
+}
+.metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.cc-def {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -8px 0;
+  border: 1px solid var(--edge);
+  border-radius: var(--control-radius);
+  background: var(--well);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.cc-def svg {
+  width: 14px;
+  height: 14px;
+}
+.cc-def:hover {
+  color: var(--ink);
+  background: var(--raised);
+}
+
+/* Event trail, newest first (the legacy .timeline belongs to the opportunity detail). */
+.event-trail {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px;
+  display: grid;
+}
+.event-trail-item {
+  display: grid;
+  grid-template-columns: 112px 20px minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--edge);
+}
+.event-trail-item:first-child {
+  border-top: 0;
+}
+.event-trail-item > time {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ink-3);
+  padding-top: 3px;
+}
+.event-trail-item > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  color: var(--ink-3);
+}
+.event-trail-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  font-size: 13px;
+}
+.event-trail-copy a {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.event-trail-copy .cell-muted {
+  color: var(--ink-3);
+  font-size: var(--type-label);
+}
+@media (max-width: 1100px) {
+  .metric-strip {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .metric-strip > li:nth-child(4n + 1) {
+    border-inline-start: 0;
+  }
+  .metric-strip > li:nth-child(n + 5) {
+    border-top: 1px solid var(--edge);
+  }
+}
+@media (max-width: 600px) {
+  .metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric-strip > li:nth-child(4n + 1) {
+    border-inline-start: 1px solid var(--edge);
+  }
+  .metric-strip > li:nth-child(2n + 1) {
+    border-inline-start: 0;
+  }
+  .metric-strip > li:nth-child(n + 3) {
+    border-top: 1px solid var(--edge);
+  }
+  .event-trail-item {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+  .event-trail-item > time {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+}
