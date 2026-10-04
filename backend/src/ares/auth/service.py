@@ -50,9 +50,25 @@ class SupabaseAuthService:
             row = connection.execute(
                 """
                 select role::text
-                from public.memberships
-                where user_id = %s and tenant_id = %s and active
+                from public.memberships m
+                join public.tenants t on t.id=m.tenant_id
+                where m.user_id = %s and m.tenant_id = %s and m.active
+                  and t.status = 'active'
                 """,
                 (user_id, tenant_id),
             ).fetchone()
         return None if row is None else str(row[0])
+
+    def has_connect_access(self, tenant_id: UUID) -> bool:
+        with psycopg.connect(self._database_url) as connection:
+            row = connection.execute(
+                """
+                select exists(
+                    select 1 from public.tenant_entitlements
+                    where tenant_id=%s and module='ares_connect' and status='active'
+                      and (expires_at is null or expires_at>now())
+                )
+                """,
+                (tenant_id,),
+            ).fetchone()
+        return bool(row and row[0])

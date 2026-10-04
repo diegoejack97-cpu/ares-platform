@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AresMark } from "@/components/ares-mark";
+import { useLiveClock } from "@/lib/live-clock";
 import {
   createTenant,
   listTenants,
@@ -24,6 +25,8 @@ import {
 } from "./api";
 import "./provider.css";
 import { BillingEditor } from "./BillingEditor";
+import { CompanyContractEditor, packageLabels } from "./CompanyContractEditor";
+import { ContractOverview } from "./ContractOverview";
 import { QuotaEditor } from "./QuotaEditor";
 
 const reason = z
@@ -114,10 +117,9 @@ function ProviderLogin() {
         <span className="login-kicker">NOGUEIRA!IA / PROVEDOR</span>
         <h1>Contratos e acesso sob controle.</h1>
         <p>
-          Administre tenants e módulos com autoria, motivo e histórico
-          preservados.
+          Administre empresas, planos, vencimentos e liberações com autoria,
+          motivo e histórico preservados.
         </p>
-        <a href="/radar">Voltar ao produto</a>
       </section>
       <section className="login-card">
         <div className="login-brand">
@@ -174,6 +176,7 @@ function ProviderLogin() {
 }
 
 function ProviderPanel() {
+  const now = useLiveClock();
   const [cursor, setCursor] = useState<string | null>(null),
     [selected, setSelected] = useState("");
   const client = useQueryClient();
@@ -202,14 +205,13 @@ function ProviderPanel() {
       <header className="page-header">
         <div>
           <span className="eyebrow">NOGUEIRA!IA / ADMINISTRAÇÃO</span>
-          <h1>Painel do provedor</h1>
+          <h1>Central Admin</h1>
           <p>
-            Tenants e módulos contratados. Cada alteração registra autoria e
-            motivo.
+            Gestão das empresas, contratos, vencimentos e limites. Cada
+            alteração registra autoria e motivo.
           </p>
         </div>
         <div className="toolbar">
-          <a href="/radar">Abrir produto</a>
           <Button
             variant="outline"
             onClick={() => void providerAuth.auth.signOut({ scope: "local" })}
@@ -225,20 +227,20 @@ function ProviderPanel() {
         </Button>
       ) : null}
       {query.isPending ? (
-        <Skeleton className="h-64 w-full" aria-label="Carregando tenants" />
+        <Skeleton className="h-64 w-full" aria-label="Carregando empresas" />
       ) : null}
       {tenants ? (
         <>
           <div className="provider-layout">
             <section className="panel provider-section">
-              <h2>Tenants</h2>
+              <h2>Empresas e contratos</h2>
               <p className="provider-note">
                 Fonte: cadastro administrativo. Esta consulta é auditada.
               </p>
               {!tenants.items.length ? (
                 <p>
-                  Nenhum tenant nesta página. Cadastre um novo tenant ou volte
-                  ao início.
+                  Nenhuma empresa nesta página. Cadastre uma empresa ou volte ao
+                  início.
                 </p>
               ) : (
                 <ul className="provider-tenants">
@@ -252,7 +254,22 @@ function ProviderPanel() {
                         {tenant.name}
                       </Button>
                       <span>
-                        {tenant.slug} · {tenant.status} · v{tenant.version}
+                        {tenant.package_code
+                          ? (packageLabels[
+                              tenant.package_code as keyof typeof packageLabels
+                            ] ?? tenant.package_code)
+                          : "Plano não definido"}{" "}
+                        · {tenant.status === "active" ? "Liberada" : "Suspensa"}
+                        {tenant.package_expires_at
+                          ? ` · ${new Date(tenant.package_expires_at).getTime() <= now ? "vencido em" : "vence em"} ${new Date(tenant.package_expires_at).toLocaleDateString("pt-BR")}`
+                          : ""}
+                        {tenant.billing_state
+                          ? ` · cobrança ${tenant.billing_state}`
+                          : ""}
+                        {tenant.seats_limit !== null &&
+                        tenant.seats_limit !== undefined
+                          ? ` · ${tenant.seats_limit} licenças`
+                          : ""}
                       </span>
                     </li>
                   ))}
@@ -274,14 +291,15 @@ function ProviderPanel() {
                   Próxima página
                 </Button>
                 <Button variant="outline" onClick={() => void query.refetch()}>
-                  Atualizar tenants
+                  Atualizar empresas
                 </Button>
               </div>
             </section>
             <section className="panel provider-section">
-              <h2>Criar tenant</h2>
+              <h2>Cadastrar empresa</h2>
               <p className="provider-note">
-                Módulos e usuários serão habilitados separadamente.
+                A empresa começa suspensa. Configure plano, cobrança e licenças
+                antes de liberá-la.
               </p>
               <form
                 onSubmit={form.handleSubmit((values) =>
@@ -311,9 +329,11 @@ function ProviderPanel() {
                 ) : null}
                 <ErrorNotice error={mutation.error} />
                 {mutation.isSuccess ? (
-                  <p role="status">Tenant criado e registrado na auditoria.</p>
+                  <p role="status">
+                    Empresa cadastrada e registrada na auditoria.
+                  </p>
                 ) : null}
-                <Button disabled={mutation.isPending}>Criar tenant</Button>
+                <Button disabled={mutation.isPending}>Cadastrar empresa</Button>
               </form>
             </section>
           </div>
@@ -321,7 +341,7 @@ function ProviderPanel() {
             <EntitlementEditor key={selected} tenantId={selected} />
           ) : (
             <p className="provider-note">
-              Selecione um tenant para revisar os módulos.
+              Selecione uma empresa para revisar o contrato.
             </p>
           )}
         </>
@@ -360,7 +380,7 @@ function EntitlementEditor({ tenantId }: { tenantId: string }) {
   const data = query.isError ? undefined : query.data;
   return (
     <section className="panel provider-section">
-      <h2>Módulos do tenant</h2>
+      <h2>Contrato da empresa</h2>
       <ErrorNotice error={query.error} />
       <Button
         variant="outline"
@@ -375,67 +395,79 @@ function EntitlementEditor({ tenantId }: { tenantId: string }) {
           <p>
             {data.tenant.name} · versão {data.tenant.version}
           </p>
-          <ul>
-            {data.entitlements.map((item) => (
-              <li key={item.module}>
-                {item.module}: {item.status}
-                {item.expires_at
-                  ? ` · expira em ${new Date(item.expires_at).toLocaleString("pt-BR")}`
-                  : ""}
-              </li>
-            ))}
-          </ul>
-          <form
-            onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
-          >
-            <label htmlFor="provider-module">Módulo</label>
-            <select id="provider-module" {...form.register("module")}>
-              <option value="">Selecione um módulo</option>
-              <option value="stellar">STELLAR</option>
-              <option
-                value="ares_connect"
-                disabled={data.entitlements.some(
-                  (item) => item.module === "ares_crm",
-                )}
-              >
-                ARES Connect
-              </option>
-              <option
-                value="ares_crm"
-                disabled={data.entitlements.some(
-                  (item) => item.module === "ares_connect",
-                )}
-              >
-                ARES CRM
-              </option>
-            </select>
-            {form.formState.errors.module ? (
-              <p role="alert">Selecione um módulo disponível.</p>
-            ) : null}
-            <p className="provider-note">
-              Troca do dono do funil exige migração assistida.
-            </p>
-            <label htmlFor="provider-status">Estado do módulo</label>
-            <select id="provider-status" {...form.register("status")}>
-              <option value="active">Ativo</option>
-              <option value="suspended">Suspenso</option>
-              <option value="revoked">Revogado</option>
-            </select>
-            <label htmlFor="entitlement-reason">Motivo da alteração</label>
-            <Input id="entitlement-reason" {...form.register("reason")} />
-            {form.formState.errors.reason ? (
-              <p role="alert">{form.formState.errors.reason.message}</p>
-            ) : null}
-            <ErrorNotice error={mutation.error} />
-            {mutation.isSuccess ? (
-              <p role="status">Módulo atualizado e auditado.</p>
-            ) : null}
-            <Button disabled={mutation.isPending || query.isFetching}>
-              Salvar módulo
-            </Button>
-          </form>
+          <ContractOverview data={data} />
+          <CompanyContractEditor
+            key={`contract-${data.tenant.version}`}
+            data={data}
+          />
           <BillingEditor key={data.tenant.version} data={data} />
           <QuotaEditor key={`quota-${data.tenant.version}`} data={data} />
+          <details className="provider-advanced">
+            <summary>Gerenciamento individual de módulos</summary>
+            <p className="provider-note">
+              Use apenas para ajustes de módulos dentro do pacote contratado. A
+              troca do dono do funil exige migração assistida.
+            </p>
+            <ul>
+              {data.entitlements.map((item) => (
+                <li key={item.module}>
+                  {item.module}: {item.status}
+                  {item.expires_at
+                    ? ` · expira em ${new Date(item.expires_at).toLocaleString("pt-BR")}`
+                    : ""}
+                </li>
+              ))}
+            </ul>
+            <form
+              onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
+            >
+              <label htmlFor="provider-module">Módulo</label>
+              <select id="provider-module" {...form.register("module")}>
+                <option value="">Selecione um módulo</option>
+                <option value="stellar">STELLAR</option>
+                <option
+                  value="ares_connect"
+                  disabled={data.entitlements.some(
+                    (item) => item.module === "ares_crm",
+                  )}
+                >
+                  ARES Connect
+                </option>
+                <option
+                  value="ares_crm"
+                  disabled={data.entitlements.some(
+                    (item) => item.module === "ares_connect",
+                  )}
+                >
+                  ARES CRM
+                </option>
+              </select>
+              {form.formState.errors.module ? (
+                <p role="alert">Selecione um módulo disponível.</p>
+              ) : null}
+              <p className="provider-note">
+                Troca do dono do funil exige migração assistida.
+              </p>
+              <label htmlFor="provider-status">Estado do módulo</label>
+              <select id="provider-status" {...form.register("status")}>
+                <option value="active">Ativo</option>
+                <option value="suspended">Suspenso</option>
+                <option value="revoked">Revogado</option>
+              </select>
+              <label htmlFor="entitlement-reason">Motivo da alteração</label>
+              <Input id="entitlement-reason" {...form.register("reason")} />
+              {form.formState.errors.reason ? (
+                <p role="alert">{form.formState.errors.reason.message}</p>
+              ) : null}
+              <ErrorNotice error={mutation.error} />
+              {mutation.isSuccess ? (
+                <p role="status">Módulo atualizado e auditado.</p>
+              ) : null}
+              <Button disabled={mutation.isPending || query.isFetching}>
+                Salvar módulo
+              </Button>
+            </form>
+          </details>
         </>
       ) : null}
     </section>

@@ -15,7 +15,7 @@ from ares.config import Settings
 
 class ChatCommand(BaseModel):
     text: str = Field(min_length=1, max_length=1200)
-    scope_ref: UUID
+    scope_ref: UUID | None = None
 
     @field_validator("text")
     @classmethod
@@ -31,6 +31,7 @@ class ChatCitation(BaseModel):
     occurred_at: str | None = None
     source: str | None = None
     source_ref: str | None = None
+    opportunity_id: UUID | None = None
 
 
 class ChatContext(BaseModel):
@@ -87,7 +88,7 @@ def chat_router(settings: Settings, require_user: Callable[..., Any]) -> APIRout
         )
 
     @router.get("/messages", response_model=ChatHistory)
-    def history(scope_ref: UUID, user: AuthenticatedUser = dependency) -> Any:
+    def history(scope_ref: UUID | None = None, user: AuthenticatedUser = dependency) -> Any:
         try:
             return service.history(user, scope_ref)
         except ChatFailure as failure:

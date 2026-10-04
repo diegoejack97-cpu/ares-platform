@@ -15,6 +15,7 @@ import { Freshness } from "@/components/live/freshness";
 import { LiveValue } from "@/components/live/live-value";
 
 import { RecommendationCard } from "./recommendation-card";
+import "./approvals.css";
 
 export function ApprovalsPage() {
   const queryClient = useQueryClient();
@@ -51,14 +52,16 @@ export function ApprovalsPage() {
         </div>
         <div className="approval-count" aria-label="Aprovações pendentes">
           <CheckSquareOffsetIcon aria-hidden />
-          <strong><LiveValue value={approvals.data?.total ?? 0} /></strong>
+          <strong>
+            <LiveValue value={approvals.data?.total ?? 0} />
+          </strong>
           <span>pendentes</span>
         </div>
       </header>
 
       {decide.isError && (
         <div className="conflict-banner" role="alert">
-          <WarningCircleIcon aria-hidden />
+          <WarningCircleIcon size={20} weight="fill" aria-hidden />
           <div>
             <strong>Decisão não aplicada</strong>
             <span>
@@ -83,7 +86,9 @@ export function ApprovalsPage() {
         <div className="empty-state" role="alert">
           <strong>Fila indisponível</strong>
           <span>{approvals.error.message}</span>
-          <Button variant="outline" onClick={() => void approvals.refetch()}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => void approvals.refetch()}>
+            Tentar novamente
+          </Button>
         </div>
       ) : approvals.data?.items.length ? (
         <section className="approval-grid" aria-label="Recomendações pendentes">

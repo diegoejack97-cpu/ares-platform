@@ -36,6 +36,7 @@ def contract():
         db.execute("delete from public.ai_budget_reservations where tenant_id=%s", (tenant,))
         db.execute("delete from public.tenant_usage_daily where tenant_id=%s", (tenant,))
         db.execute("delete from public.tenant_quotas where tenant_id=%s", (tenant,))
+        db.execute("delete from public.sentinel_schedules where tenant_id=%s", (tenant,))
         db.execute("delete from public.tenants where id=%s", (tenant,))
         db.execute("delete from auth.users where id=%s", (actor,))
 

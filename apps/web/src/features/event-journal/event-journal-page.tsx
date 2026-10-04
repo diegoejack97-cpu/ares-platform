@@ -81,7 +81,9 @@ export function EventJournalPage() {
         </div>
         <div>
           <span>Eventos persistidos</span>
-          <strong className="tabular"><LiveValue value={eventsQuery.data?.total ?? 0} /></strong>
+          <strong className="tabular">
+            <LiveValue value={eventsQuery.data?.total ?? 0} />
+          </strong>
         </div>
         <div>
           <span>Idempotência</span>
@@ -111,7 +113,12 @@ export function EventJournalPage() {
             <Suspense
               fallback={<Skeleton className="h-[250px] w-full rounded-none" />}
             >
-              <EventActivityChart events={events} freshness={eventsQuery.dataUpdatedAt} state={eventsQuery.isError ? "error" : "ready"} onRetry={() => void eventsQuery.refetch()} />
+              <EventActivityChart
+                events={events}
+                freshness={eventsQuery.dataUpdatedAt}
+                state={eventsQuery.isError ? "error" : "ready"}
+                onRetry={() => void eventsQuery.refetch()}
+              />
             </Suspense>
           )}
         </section>

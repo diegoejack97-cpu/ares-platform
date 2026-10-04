@@ -178,6 +178,9 @@ export function RadarPage() {
           <p>O risco em perspectiva. A próxima decisão em foco.</p>
         </div>
         <div className="radar-header-actions">
+          <Link className="radar-operations-link" to="/command-center">
+            Visão operacional <ArrowUpRightIcon aria-hidden />
+          </Link>
           <div className="radar-sync">
             <span className="sync-indicator" aria-hidden>
               <i />

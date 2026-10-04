@@ -40,18 +40,18 @@ async function check(response: Response) {
   }
 }
 export async function getChat(
-  scope: string,
+  scope?: string,
   signal?: AbortSignal,
 ): Promise<ChatHistory> {
   const response = await fetch(
-    `${base}?scope_ref=${encodeURIComponent(scope)}`,
+    scope ? `${base}?scope_ref=${encodeURIComponent(scope)}` : base,
     { headers: await headers(), signal },
   );
   await check(response);
   return response.json();
 }
 export async function sendChat(
-  scope: string,
+  scope: string | undefined,
   text: string,
   signal: AbortSignal,
   receive: (event: string, data: Record<string, unknown>) => void,
@@ -60,7 +60,7 @@ export async function sendChat(
     method: "POST",
     headers: await headers(),
     signal,
-    body: JSON.stringify({ text, scope_ref: scope }),
+    body: JSON.stringify(scope ? { text, scope_ref: scope } : { text }),
   });
   await check(response);
   if (!response.body) throw new ChatError(503, "stream_missing");

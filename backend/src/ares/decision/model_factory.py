@@ -8,11 +8,12 @@ from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
 
 from ares.ai.budget import AIBudgetGuard
+from ares.ai.models import response_model
 from ares.ai.quotas import estimate_usd
 from ares.ai.usage import UsageObservation, observe
+from ares.decision.model_output import ModelRecommendationOutput
 from ares.decision.models import (
     ActionAlternative,
     ActionDraft,
@@ -25,6 +26,8 @@ SYSTEM_RULES = [
     "Produce a recommendation only. You cannot execute actions or choose a mutation target.",
     "Never claim causality or incremental revenue. Never close a sale autonomously.",
     "Use only create_task, add_note, or update_stage; policy code makes final authorization.",
+    "Write the recommendation in Portuguese. In payload, use title for create_task, body for "
+    "add_note, and stage for update_stage. Set unused payload fields to null.",
 ]
 
 
@@ -80,22 +83,18 @@ class RecommendationModelFactory:
         try:
             agent = Agent(
                 name="ARES Follow-up Agent",
-                model=OpenAIResponses(
-                    id=self._model_id,
-                    api_key=self._api_key,
-                    store=False,
-                    max_output_tokens=900,
-                    timeout=45,
-                    max_retries=0,
-                ),
+                model=response_model(self._model_id, self._api_key),
                 instructions=SYSTEM_RULES,
                 tools=[],
-                output_schema=RecommendationOutput,
+                output_schema=ModelRecommendationOutput,
                 telemetry=False,
             )
             response = agent.run(prompt)
             usage = observe(response.metrics, self._model_id)
-            output = RecommendationOutput.model_validate(response.content)
+            content = response.content
+            if isinstance(content, ModelRecommendationOutput):
+                content = content.model_dump(exclude_none=True)
+            output = RecommendationOutput.model_validate(content)
             return ModelResult(
                 output, "agno_openai", self._model_id, prompt_hash, "succeeded", usage=usage
             )

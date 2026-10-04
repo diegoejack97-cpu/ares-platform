@@ -11,11 +11,20 @@ export function SlaCountdown({ timestamp }: { timestamp: string | null }) {
   useEffect(() => {
     if (!previous.current && overdue) {
       setCrossed(true);
-      window.dispatchEvent(new CustomEvent("ares:sla-overdue", { detail: timestamp }));
+      window.dispatchEvent(
+        new CustomEvent("ares:sla-overdue", { detail: timestamp }),
+      );
     }
     previous.current = overdue;
     const timeout = setTimeout(() => setCrossed(false), 900);
     return () => clearTimeout(timeout);
   }, [overdue, timestamp]);
-  return <span className={`sla${overdue ? " overdue" : ""}${crossed ? " delta worse" : ""}`} data-overdue={overdue}>{slaLabel(timestamp, now)}</span>;
+  return (
+    <span
+      className={`sla${overdue ? " overdue" : ""}${crossed ? " delta worse" : ""}`}
+      data-overdue={overdue}
+    >
+      {slaLabel(timestamp, now)}
+    </span>
+  );
 }

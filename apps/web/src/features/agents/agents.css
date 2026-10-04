@@ -39,42 +39,50 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
 }
 .agent-record {
+  min-width: 0;
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: var(--surface-radius);
   box-shadow: var(--e-1);
-  padding: 24px;
+  padding: 15px;
 }
 .agent-identity {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 10px;
 }
 .agent-symbol {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   color: var(--brasa-ink);
   background: var(--well);
   border: 1px solid var(--edge);
   border-radius: var(--control-radius);
 }
+.agent-symbol svg {
+  width: 19px;
+  height: 19px;
+}
 .agent-identity h2 {
-  margin: 5px 0;
-  font-size: 22px;
+  margin: 2px 0;
+  font-size: 16px;
   letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
 }
 .agent-identity p {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--ink-2);
   margin: 0;
   overflow-wrap: anywhere;
@@ -87,39 +95,40 @@
 }
 .agent-metrics {
   display: grid;
-  grid-template-columns: 0.7fr 1fr 1fr;
-  margin: 24px 0;
-  padding: 20px 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 13px 0 10px;
+  padding: 10px 0;
   border-block: 1px solid var(--edge);
-  gap: 24px;
+  gap: 9px 14px;
 }
 .agent-metrics dt {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--ink-2);
 }
 .agent-metrics dd {
-  font-size: clamp(20px, 2vw, 28px);
-  margin: 8px 0 4px;
+  font-size: 17px;
+  margin: 3px 0 1px;
   font-weight: 600;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 .agent-metrics dd.agent-metric-note {
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 400;
   letter-spacing: normal;
 }
 .agent-statuses {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 28px;
-  margin: 0 0 20px;
+  gap: 5px 12px;
+  margin: 0 0 12px;
 }
 .agent-statuses div {
   display: flex;
-  gap: 12px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 11px;
   color: var(--ink-2);
 }
 .agent-statuses dd {
@@ -135,9 +144,9 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   color: var(--ink-3);
-  font-size: 12px;
+  font-size: 10px;
 }
 .agent-record-footer span:first-child {
   display: flex;
@@ -150,19 +159,21 @@
   flex: 0 0 16px;
 }
 .agents-explanation {
-  margin: 32px 0 0;
+  margin: 18px 0 0;
   border-top: 1px solid var(--edge);
-  padding-top: 24px;
+  padding-top: 10px;
 }
-.agents-explanation h2 {
-  font-size: 17px;
-  margin: 0 0 20px;
+.agents-explanation summary {
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
 }
 .agents-explanation dl {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px 40px;
-  margin: 0;
+  gap: 16px 28px;
+  margin: 15px 0 0;
 }
 .agents-explanation dt {
   font-weight: 600;
@@ -192,13 +203,17 @@
   overflow-wrap: anywhere;
   max-width: 100%;
 }
+@media (max-width: 1180px) {
+  .agent-records {
+    grid-template-columns: 1fr;
+  }
+}
 @media (max-width: 700px) {
   .agent-record {
-    padding: 18px;
+    padding: 13px;
   }
   .agent-metrics {
-    grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 10px;
   }
   .agents-explanation dl {
     grid-template-columns: 1fr;
@@ -208,7 +223,7 @@
     gap: 12px;
   }
   .agent-identity h2 {
-    font-size: 20px;
+    font-size: 16px;
   }
   .agents-controls {
     width: 100%;

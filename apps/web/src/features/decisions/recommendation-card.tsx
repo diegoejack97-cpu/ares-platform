@@ -1,12 +1,17 @@
 import {
+  ArrowsClockwiseIcon,
   CheckIcon,
+  ClipboardTextIcon,
   NotePencilIcon,
   ProhibitIcon,
   ShieldCheckIcon,
+  ShieldSlashIcon,
+  ShieldWarningIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useLiveClock } from "@/lib/live-clock";
 import type {
   ActionDraft,
   Recommendation,
@@ -30,6 +35,31 @@ const actionLabels = {
   update_stage: "Alterar estágio",
 };
 
+const actionIcons = {
+  create_task: ClipboardTextIcon,
+  add_note: NotePencilIcon,
+  update_stage: ArrowsClockwiseIcon,
+};
+
+const urgencyLabels = {
+  low: "Baixa",
+  normal: "Normal",
+  high: "Alta",
+  critical: "Crítica",
+};
+
+const policyIcons = {
+  allow: ShieldCheckIcon,
+  require_approval: ShieldWarningIcon,
+  deny: ShieldSlashIcon,
+};
+
+const policyLabels = {
+  allow: "Permitida pela política",
+  require_approval: "Revisão humana",
+  deny: "Bloqueada pela política",
+};
+
 function editableField(action: ActionDraft): "title" | "body" | "stage" {
   if (action.action_kind === "create_task") return "title";
   if (action.action_kind === "add_note") return "body";
@@ -43,19 +73,32 @@ export function RecommendationCard({
   onDecide,
 }: RecommendationCardProps) {
   const [editing, setEditing] = useState(false);
+  const now = useLiveClock();
   const field = editableField(recommendation.recommended_action);
+  const ActionIcon = actionIcons[recommendation.recommended_action.action_kind];
+  const PolicyIcon = policyIcons[recommendation.policy_verdict];
   const [editedValue, setEditedValue] = useState(
     String(recommendation.recommended_action.payload[field] ?? ""),
   );
-  const canDecide =
+  const awaitingApproval =
     recommendation.status === "pending" &&
     recommendation.policy_verdict === "require_approval";
+  const expiry = recommendation.approval_expires_at
+    ? Date.parse(recommendation.approval_expires_at)
+    : NaN;
+  const expired = Number.isFinite(expiry) && expiry <= now;
+  const canDecide =
+    awaitingApproval &&
+    recommendation.can_decide === true &&
+    recommendation.approval_status === "pending" &&
+    Number.isFinite(expiry) &&
+    !expired;
 
   return (
     <article className={`decision-card${compact ? " compact" : ""}`}>
       <div className="decision-strip">
         <span className={`urgency urgency-${recommendation.urgency}`}>
-          {recommendation.urgency}
+          {urgencyLabels[recommendation.urgency]}
         </span>
         <span>
           {recommendation.generation_mode === "agno_openai"
@@ -66,13 +109,23 @@ export function RecommendationCard({
       </div>
       <div className="decision-body">
         <div className="decision-title">
-          <div>
-            <span>Ação recomendada</span>
-            <h3>
-              {actionLabels[recommendation.recommended_action.action_kind]}
-            </h3>
+          <div className="decision-title-main">
+            <span className="decision-action-icon" aria-hidden="true">
+              <ActionIcon size={19} weight="bold" />
+            </span>
+            <div>
+              <span>Ação recomendada</span>
+              <h3>
+                {actionLabels[recommendation.recommended_action.action_kind]}
+              </h3>
+            </div>
           </div>
-          <ShieldCheckIcon aria-label="Política verificada" />
+          <span
+            className={`decision-policy policy-${recommendation.policy_verdict}`}
+          >
+            <PolicyIcon size={15} aria-hidden="true" />
+            {policyLabels[recommendation.policy_verdict]}
+          </span>
         </div>
         <p className="action-copy">
           {String(recommendation.recommended_action.payload[field] ?? "")}
@@ -118,6 +171,16 @@ export function RecommendationCard({
             <dd>{recommendation.action_status ?? "não autorizada"}</dd>
           </div>
         </dl>
+
+        {awaitingApproval && !canDecide && (
+          <p className="decision-rationale" role="status">
+            {expired
+              ? "Esta aprovação expirou. Atualize a consulta."
+              : recommendation.approval_required_role === "manager"
+                ? "Esta ação exige aprovação de um gestor ou administrador."
+                : "Aprovação indisponível neste acesso. Atualize a consulta se sua permissão mudou."}
+          </p>
+        )}
 
         {editing && canDecide && (
           <form

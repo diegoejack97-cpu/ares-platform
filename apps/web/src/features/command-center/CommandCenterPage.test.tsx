@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -96,8 +102,13 @@ function mount() {
     </QueryClientProvider>,
   );
 }
-const impactBlock = async () =>
-  within(await screen.findByRole("region", { name: "Impacto ARES" }));
+const showView = async (name: RegExp) => {
+  await userEvent.setup().click(await screen.findByRole("button", { name }));
+};
+const impactBlock = async () => {
+  await showView(/^Resultados/);
+  return within(await screen.findByRole("region", { name: "Impacto ARES" }));
+};
 const withData = (patch: (data: CommandCenterSummary) => void) => {
   const data = structuredClone(fixture);
   patch(data);
@@ -117,6 +128,45 @@ test("unproven incremental is never rendered as zero", async () => {
     impact.getByText("42 outcomes sem moeda, fora dos totais"),
   ).toBeInTheDocument();
   expect(impact.getByText("3 de 3 observações sintéticas")).toBeInTheDocument();
+});
+
+test("opens on priorities and separates analysis from audit history", async () => {
+  mount();
+  await screen.findByRole("region", { name: "Agora" });
+  expect(screen.getByRole("button", { name: /^Prioridades/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(
+    screen.queryByRole("region", { name: "Impacto ARES" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "Trilha recente" }),
+  ).not.toBeInTheDocument();
+  await showView(/^Resultados/);
+  expect(
+    screen.getByRole("region", { name: "Impacto ARES" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "Agora" }),
+  ).not.toBeInTheDocument();
+  await showView(/^Histórico e critérios/);
+  expect(
+    screen.getByRole("region", { name: "Trilha recente" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("region", { name: "Definições e limitações" }),
+  ).toBeInTheDocument();
+});
+
+test("loading state follows the first view's layout", () => {
+  vi.mocked(commandCenter).mockImplementation(() => new Promise(() => {}));
+  const { container } = mount();
+  expect(
+    container.querySelector('[aria-label="Carregando Command Center"]'),
+  ).toHaveAttribute("aria-busy", "true");
+  expect(container.querySelectorAll(".cc-primary-stats > *")).toHaveLength(4);
+  expect(container.querySelector(".cc-analysis-grid")).not.toBeInTheDocument();
 });
 
 test("value at risk keeps currencies apart and counts missing values", async () => {
@@ -164,10 +214,39 @@ test("raw enum codes never reach the reader", async () => {
     "critical",
   ])
     expect(screen.queryByText(raw)).not.toBeInTheDocument();
+  await showView(/^Histórico e critérios/);
   expect(screen.getByText("Aprovada")).toBeInTheDocument();
   expect(screen.getAllByText("Criar tarefa").length).toBeGreaterThan(0);
   expect(screen.getByText("Agente ARES")).toBeInTheDocument();
+  await showView(/^Resultados/);
   expect(screen.getAllByText("influenciado").length).toBeGreaterThan(0);
+});
+
+test("history shows five events before expanding and criteria stay available", async () => {
+  withData((data) => {
+    data.activity.items = Array.from({ length: 8 }, (_, index) => ({
+      ...data.activity.items[index % data.activity.items.length],
+      correlation_id: `correlation-${index}`,
+    }));
+  });
+  mount();
+  await showView(/^Histórico e critérios/);
+  expect(
+    document.querySelectorAll(".cc-activity .event-trail-item"),
+  ).toHaveLength(5);
+  expect(
+    screen.queryByText("Fórmula sintética de critical."),
+  ).not.toBeInTheDocument();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: "Mostrar mais 3 eventos" }));
+  expect(
+    document.querySelectorAll(".cc-activity .event-trail-item"),
+  ).toHaveLength(8);
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: "Ver critérios e fórmulas" }));
+  expect(screen.getByText(/Fórmula sintética de critical/)).toBeInTheDocument();
 });
 
 test("notices reflect synthetic data and degraded sources with the right action", async () => {
@@ -228,6 +307,7 @@ test("seller scope hides tenant-only surfaces", async () => {
   expect(
     await screen.findByText("Escopo: minhas oportunidades"),
   ).toBeInTheDocument();
+  await showView(/^Resultados/);
   expect(
     screen.queryByRole("link", { name: "Abrir Impacto ARES" }),
   ).not.toBeInTheDocument();
@@ -304,12 +384,15 @@ test("an empty tenant explains itself instead of rendering zeros as results", as
   expect(
     await screen.findByText(/Nenhuma oportunidade aberta neste escopo/),
   ).toBeInTheDocument();
+  await showView(/^Resultados/);
   expect(
     screen.getByText(/Nenhum outcome observado no período/),
   ).toBeInTheDocument();
+  await showView(/^Histórico e critérios/);
   expect(
     screen.getByText(/Nenhuma decisão, intervenção ou outcome no período/),
   ).toBeInTheDocument();
+  await showView(/^Prioridades/);
   expect(screen.getByText(/Nenhuma aprovação pendente/)).toBeInTheDocument();
   expect(screen.queryByText(/(^|[^\d.])0,00/)).not.toBeInTheDocument();
 });
@@ -318,10 +401,21 @@ test("definition buttons focus the matching definition and every label has one",
   const user = userEvent.setup();
   const { container } = mount();
   await screen.findByRole("region", { name: "Agora" });
+  const keys = new Set(fixture.definitions.map((item) => item.key));
+  const visibleKeys = [
+    ...container.querySelectorAll<HTMLElement>("[data-def-key]"),
+  ].map((element) => element.dataset.defKey);
+  await showView(/^Resultados/);
+  visibleKeys.push(
+    ...[...container.querySelectorAll<HTMLElement>("[data-def-key]")].map(
+      (element) => element.dataset.defKey,
+    ),
+  );
+  await showView(/^Prioridades/);
   await user.click(
     screen.getByRole("button", { name: "Definição de Críticas" }),
   );
-  expect(document.activeElement?.id).toBe("def-critical");
+  await waitFor(() => expect(document.activeElement?.id).toBe("def-critical"));
   expect(
     screen
       .getAllByText((_, node) =>
@@ -329,16 +423,13 @@ test("definition buttons focus the matching definition and every label has one",
       )
       .filter((node) => node.tagName === "LI"),
   ).toHaveLength(1);
-  const keys = new Set(fixture.definitions.map((item) => item.key));
-  const used = [
-    ...container.querySelectorAll<HTMLElement>("[data-def-key]"),
-  ].map((element) => element.dataset.defKey);
-  expect(used.length).toBeGreaterThan(10);
-  for (const key of used) expect(keys.has(key ?? "")).toBe(true);
+  expect(visibleKeys.length).toBeGreaterThan(10);
+  for (const key of visibleKeys) expect(keys.has(key ?? "")).toBe(true);
 });
 
 test("charts receive honest series and a table alternative exists", async () => {
   mount();
+  await showView(/^Resultados/);
   await screen.findByLabelText(
     "Abertas, trabalhadas, executadas e falhas por dia",
   );

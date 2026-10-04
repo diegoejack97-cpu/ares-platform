@@ -32,12 +32,20 @@ const path = require('node:path');
     await page.route('**/api/v1/admin/tenants**', route => {
       const request = route.request();
       if (request.method() === 'POST') { command = request.postDataJSON(); return route.fulfill({ status: 409, json: { error: { code: 'version_conflict', correlation_id: 'synthetic-conflict' } } }); }
-      return route.fulfill({ json: request.url().endsWith(tenant.id) ? { tenant, entitlements: [{ module: 'ares_connect', status: 'active', granted_at: tenant.created_at, expires_at: null }] } : { items: [tenant], next_cursor: null } });
+      return route.fulfill({ json: request.url().endsWith(tenant.id) ? {
+        tenant,
+        entitlements: [{ module: 'ares_connect', status: 'active', granted_at: tenant.created_at, expires_at: null }],
+        billing: null,
+        quota: { seats_limit: 2, agent_slots: 1, sentinel_slots: 1, ai_daily_budget_brl: '5', ai_monthly_budget_brl: '50', usd_brl_rate: '5', rate_source: 'synthetic test', updated_at: tenant.created_at },
+        usage: { active_members: 1, pending_invitations: 0, ai_spend_today_brl: '0', ai_spend_month_brl: '0', agent_runs_today: 0, agent_runs_month: 0 },
+        initial_admin_assigned: true,
+      } : { items: [tenant], next_cursor: null } });
     });
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
     await page.getByRole('button', { name: tenant.name }).click();
+    await page.getByText('Gerenciamento individual de módulos').click();
     await page.getByLabel('Módulo', { exact: true }).selectOption('ares_connect');
-    assert(await page.locator('option[value="ares_crm"]').isDisabled());
+    assert(await page.locator('#provider-module option[value="ares_crm"]').isDisabled());
     await page.getByLabel('Motivo da alteração', { exact: true }).fill('Teste sintético de conflito');
     await page.getByRole('button', { name: 'Salvar módulo' }).click();
     await page.getByText('A configuração mudou ou conflita com outro registro. Recarregue antes de salvar.').waitFor();

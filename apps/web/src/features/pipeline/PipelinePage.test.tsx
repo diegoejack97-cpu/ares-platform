@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getPipeline, movePipelineDeal, PipelineError } from "./api";
@@ -119,6 +125,19 @@ test("não move antes de confirmação humana e externa", async () => {
   ).toHaveTextContent("trace-123");
 });
 
+test("Cancelar fecha uma proposta ainda não enviada sem chamar o CRM", async () => {
+  const user = userEvent.setup();
+  renderPage();
+  await user.selectOptions(
+    await screen.findByLabelText("Mover Proposta Serra para"),
+    "won",
+  );
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(movePipelineDeal).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Mover Proposta Serra para")).toBeEnabled();
+});
+
 test("conflito exige nova leitura e não repete automaticamente o comando", async () => {
   const user = userEvent.setup();
   vi.mocked(movePipelineDeal).mockRejectedValue(
@@ -168,6 +187,20 @@ test("resultado incerto reutiliza exatamente a mesma chave por intento", async (
     screen.getByRole("button", { name: "Confirmar e executar" }),
   );
   await user.click(
+    await screen.findByRole("button", { name: "Fechar janela" }),
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("Mudança ainda não confirmada pelo CRM"),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Mover Proposta Serra para"),
+  ).not.toBeInTheDocument();
+  expect(movePipelineDeal).toHaveBeenCalledTimes(1);
+  await user.click(
+    screen.getByRole("button", { name: "Consultar intento pendente" }),
+  );
+  await user.click(
     await screen.findByRole("button", { name: "Consultar o mesmo intento" }),
   );
   await waitFor(() => expect(movePipelineDeal).toHaveBeenCalledTimes(2));
@@ -175,6 +208,7 @@ test("resultado incerto reutiliza exatamente a mesma chave por intento", async (
     vi.mocked(movePipelineDeal).mock.calls[1],
   );
   expect(await screen.findByText(/nenhuma duplicação/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Mover Proposta Serra para")).toBeEnabled();
 });
 
 test("papel somente leitura e capability ausente escondem escrita antes da interação", async () => {

@@ -36,12 +36,24 @@ const path = require("node:path");
     assert.equal(await page.locator(".nav-item.future", { hasText: "Command Center" }).count(), 0);
     checks.push("nav link active, placeholder gone");
 
+    assert.equal(await page.getByRole("region", { name: "Impacto ARES" }).count(), 0);
+    assert.equal(await page.locator("[data-chart-frame]").count(), 0);
+    checks.push("priority view loads without the full analysis and audit trail");
+
+    await page.getByText(/\d+ de \d+ abertas com prazo definido/).waitFor({ state: "attached" });
+    const queue = page.getByRole("region", { name: /Fila prioritária/ });
+    assert.ok((await queue.locator('a[href^="/opportunities/"]').count()) >= 1);
+    const showMore = page.getByRole("button", { name: /Mostrar mais .* negócios/ });
+    if (await showMore.count()) {
+      assert.equal(await queue.locator("tbody tr").count(), 5);
+      await showMore.click();
+      assert.ok((await queue.locator("tbody tr").count()) > 5);
+      await page.getByRole("button", { name: "Mostrar menos" }).click();
+    }
+    await page.getByRole("button", { name: /^Resultados/ }).click();
     await page.getByText("Não comprovado").first().waitFor();
     await page.getByText(/\d+ de \d+ execuções com custo medido/).first().waitFor();
     await page.getByText("Dados sintéticos.").waitFor();
-    await page.getByText(/\d+ de \d+ abertas com prazo definido/).waitFor();
-    const queue = page.getByRole("region", { name: /Fila prioritária/ });
-    assert.ok((await queue.locator('a[href^="/opportunities/"]').count()) >= 1);
     checks.push("honest impact figures and prioritized queue");
 
     const frames = page.locator("[data-chart-frame]");
@@ -56,10 +68,12 @@ const path = require("node:path");
     }
     checks.push("four frames with table alternatives");
 
+    await page.getByRole("button", { name: /^Prioridades/ }).click();
     await page.getByRole("button", { name: "Definição de Críticas" }).click();
-    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), "def-critical");
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === "def-critical");
     checks.push("definition jump focuses the definition");
 
+    await page.getByRole("button", { name: /^Prioridades/ }).click();
     await queue.locator('a[href^="/opportunities/"]').first().click();
     await page.waitForURL(/\/opportunities\/[0-9a-f-]{36}/);
     await page.goBack();
@@ -83,6 +97,34 @@ const path = require("node:path");
       );
       assert.deepEqual(violations, [], `accessibility ${width}`);
       await page.screenshot({ path: path.join(output, `command-center-${width}.png`), fullPage: true });
+      if (width === 1440 || width === 390) {
+        await page.getByRole("button", { name: /^Resultados/ }).click();
+        await page.locator("[data-chart-frame]").first().waitFor();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "results overflow " + width);
+        const resultViolations = await page.evaluate(async () =>
+          (await axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] } })).violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) })),
+        );
+        assert.deepEqual(resultViolations, [], "results accessibility " + width);
+        await page.screenshot({ path: path.join(output, "command-center-results-" + width + ".png"), fullPage: true });
+        await page.getByRole("button", { name: /^Histórico e critérios/ }).click();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "history overflow " + width);
+        const events = page.locator(".cc-activity .event-trail-item");
+        assert.equal(await events.count(), 5, "history initially shows five events");
+        assert.equal(await page.getByRole("button", { name: "Ver critérios e fórmulas" }).getAttribute("aria-expanded"), "false");
+        const historyViolations = await page.evaluate(async () =>
+          (await axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] } })).violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) })),
+        );
+        assert.deepEqual(historyViolations, [], "history accessibility " + width);
+        await page.screenshot({ path: path.join(output, "command-center-history-" + width + ".png"), fullPage: true });
+        await page.getByRole("button", { name: /Mostrar mais .* eventos/ }).click();
+        assert.ok((await events.count()) > 5, "history expansion reveals the remaining events");
+        await page.getByRole("button", { name: "Mostrar menos eventos" }).click();
+        await page.getByRole("button", { name: "Ver critérios e fórmulas" }).click();
+        await page.locator("#def-critical").waitFor();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "definitions overflow " + width);
+        await page.getByRole("button", { name: "Ocultar critérios" }).click();
+        await page.getByRole("button", { name: /^Prioridades/ }).click();
+      }
     }
     checks.push("no overflow and no axe violations at 1440/700/390");
 

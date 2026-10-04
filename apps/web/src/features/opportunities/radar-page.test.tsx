@@ -70,12 +70,42 @@ test("renders intelligence context and reveals the priority queue in batches of 
     source: "ARES Core / Supabase local",
     freshness_at: "2026-09-02T12:00:00Z",
   };
+  const sentinels = {
+    items: [
+      {
+        id: "finding-1",
+        opportunity_id: "op-1",
+        rule_id: "SENTINEL-SLA-OVERDUE",
+        rule_version: "1",
+        due_at: "2026-09-02T16:00:00Z",
+        detected_at: "2026-09-03T08:00:00Z",
+        evidence: { sla_at: "2026-09-02T16:00:00Z" },
+        correlation_id: "corr",
+        title: "Expansão Serra Metais",
+        state: "prioritized",
+        priority: 0,
+      },
+    ],
+    truncated: false,
+    rule: {
+      id: "SENTINEL-SLA-OVERDUE",
+      version: "1",
+      definition: "SLA vencido",
+    },
+    source: "ARES Core / oportunidades e evidências persistidas",
+    freshness_at: "2026-09-03T08:00:00Z",
+    checked_at: "2026-09-03T08:00:00Z",
+  };
   // A Response body reads once, so each call needs its own, routed by URL.
   vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
     Promise.resolve(
       new Response(
         JSON.stringify(
-          String(input).includes("/analytics") ? aggregate : list,
+          String(input).includes("/analytics")
+            ? aggregate
+            : String(input).includes("/sentinels")
+              ? sentinels
+              : list,
         ),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -98,6 +128,9 @@ test("renders intelligence context and reveals the priority queue in batches of 
   expect(
     screen.getByRole("link", { name: "Analisar oportunidade" }),
   ).toHaveAttribute("href", "/opportunities/op-1");
+  expect(
+    screen.queryByRole("heading", { name: "Sentinelas" }),
+  ).not.toBeInTheDocument();
   expect(screen.getAllByText(/Follow-up vencido/).length).toBeGreaterThan(0);
   expect(screen.getByText("Observação ≠ causalidade")).toBeInTheDocument();
   const queue = within(

@@ -3,7 +3,7 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, status
@@ -21,6 +21,7 @@ from ares.connectors.fake_crm import FakeCRMProvider
 from ares.connectors.fake_crm_lab import FakeCRMLabClient
 from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
 from ares.connectors.provider import CRMProvider
+from ares.decision.authorization import DecisionAuthorizationError
 from ares.decision.models import DecideCommand
 from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
@@ -33,6 +34,14 @@ from ares.leads.api import lead_router
 from ares.provider.account import account_router
 from ares.provider.api import install_provider_api
 from ares.provider.billing import billing_status
+from ares.sentinels.models import (
+    SentinelArchiveCommand,
+    SentinelCatalog,
+    SentinelRuleCommand,
+    SentinelSchedule,
+    SentinelScheduleCommand,
+)
+from ares.sentinels.service import SentinelScheduleConflict, SentinelService
 from ares.workers.tick import TickWorker
 
 settings = get_settings()
@@ -93,7 +102,7 @@ class HealthResponse(BaseModel):
 
 class SimulateEventRequest(BaseModel):
     event_type: str = "deal.updated"
-    aggregate_type: str = "deal"
+    aggregate_type: Literal["lead", "contact", "company", "deal", "activity", "task"] = "deal"
     aggregate_id: str | None = None
     data: dict[str, Any] | None = None
 
@@ -103,6 +112,7 @@ class TickResponse(BaseModel):
     claimed: int
     succeeded: int
     failed: int
+    sentinel_findings: int = 0
 
 
 class LabTaskRequest(BaseModel):
@@ -129,6 +139,10 @@ async def require_user(
     user = await auth_service.authenticate(credentials.credentials)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_session")
+    if not request.url.path.startswith("/api/v1/account/"):
+        allowed = await asyncio.to_thread(auth_service.has_connect_access, user.tenant_id)
+        if not allowed:
+            raise HTTPException(status_code=403, detail="ares_connect_plan_inactive")
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         billing = await asyncio.to_thread(billing_status, settings.database_url, user.tenant_id)
         if billing["degraded"]:
@@ -410,6 +424,103 @@ async def opportunity_analytics(user: CurrentUser) -> dict[str, Any]:
     return await service.opportunity_analytics()
 
 
+@app.get("/api/v1/sentinels")
+async def list_sentinels(
+    user: CurrentUser,
+    limit: int = Query(default=25, ge=1, le=50),
+) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        SentinelService(settings.database_url).list_sync, user.tenant_id, limit=limit
+    )
+
+
+@app.get("/api/v1/sentinels/config", response_model=SentinelSchedule)
+async def sentinel_schedule(user: CurrentUser) -> Any:
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).schedule_sync, user.tenant_id
+        )
+    except SentinelScheduleConflict as error:
+        raise HTTPException(404, detail={"code": error.code}) from None
+
+
+@app.get("/api/v1/sentinels/rules", response_model=SentinelCatalog)
+async def list_sentinel_rules(user: CurrentUser) -> Any:
+    return await asyncio.to_thread(
+        SentinelService(settings.database_url).catalog_sync, user.tenant_id
+    )
+
+
+@app.post("/api/v1/sentinels/rules", response_model=SentinelSchedule, status_code=201)
+async def create_sentinel_rule(command: SentinelRuleCommand, user: CurrentUser) -> Any:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).save_rule_sync,
+            user.tenant_id,
+            user.user_id,
+            command,
+        )
+    except SentinelScheduleConflict as error:
+        raise HTTPException(409, detail={"code": error.code}) from None
+
+
+@app.put("/api/v1/sentinels/rules/{rule_id}", response_model=SentinelSchedule)
+async def update_sentinel_rule(
+    rule_id: str, command: SentinelRuleCommand, user: CurrentUser
+) -> Any:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).save_rule_sync,
+            user.tenant_id,
+            user.user_id,
+            command,
+            rule_id,
+        )
+    except SentinelScheduleConflict as error:
+        status_code = 404 if error.code == "sentinel_schedule_not_found" else 409
+        raise HTTPException(status_code, detail={"code": error.code}) from None
+
+
+@app.post("/api/v1/sentinels/rules/{rule_id}/archive", status_code=204)
+async def archive_sentinel_rule(
+    rule_id: str, command: SentinelArchiveCommand, user: CurrentUser
+) -> None:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        await asyncio.to_thread(
+            SentinelService(settings.database_url).archive_rule_sync,
+            user.tenant_id,
+            user.user_id,
+            rule_id,
+            command.expected_version,
+            command.reason,
+        )
+    except SentinelScheduleConflict as error:
+        status_code = 404 if error.code == "sentinel_schedule_not_found" else 409
+        raise HTTPException(status_code, detail={"code": error.code}) from None
+
+
+@app.put("/api/v1/sentinels/config", response_model=SentinelSchedule)
+async def update_sentinel_schedule(command: SentinelScheduleCommand, user: CurrentUser) -> Any:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).update_schedule_sync,
+            user.tenant_id,
+            user.user_id,
+            command,
+        )
+    except SentinelScheduleConflict as error:
+        status_code = 404 if error.code == "sentinel_schedule_not_found" else 409
+        raise HTTPException(status_code, detail={"code": error.code}) from None
+
+
 @app.get("/api/v1/opportunities")
 async def list_opportunities(
     user: CurrentUser,
@@ -448,7 +559,11 @@ async def get_opportunity(opportunity_id: UUID, user: CurrentUser) -> dict[str, 
     result = await service.get_opportunity(opportunity_id)
     if result is None:
         raise HTTPException(status_code=404, detail="opportunity_not_found")
-    recommendation = await decisions_for(user).get_latest_for_opportunity(opportunity_id)
+    decisions = decisions_for(user)
+    recommendation = await decisions.get_latest_for_opportunity(opportunity_id, str(user.user_id))
+    result["can_request_recommendation"] = await decisions.can_request_recommendation(
+        opportunity_id, str(user.user_id)
+    )
     result["recommendation"] = recommendation
     result["recommendation_status"] = (
         recommendation["status"] if recommendation else "not_generated"
@@ -465,10 +580,12 @@ async def create_recommendation(
     user: CurrentUser,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
+    if user.role == "auditor":
+        raise HTTPException(403, detail={"code": "decision_actor_forbidden"})
     if user.tenant_id != settings.tenant_id:
         raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
     try:
-        result = await decisions_for(user).create_recommendation(opportunity_id)
+        result = await decisions_for(user).create_recommendation(opportunity_id, str(user.user_id))
         if result.get("intent_id"):
             worker = TickWorker(
                 settings.database_url,
@@ -478,6 +595,8 @@ async def create_recommendation(
             )
             background_tasks.add_task(worker.run_once)
         return result
+    except DecisionAuthorizationError as error:
+        raise HTTPException(403, detail={"code": error.code}) from error
     except DecisionConflict as error:
         raise HTTPException(
             status_code=409,
@@ -489,7 +608,7 @@ async def create_recommendation(
 
 @app.get("/api/v1/recommendations/{recommendation_id}")
 async def get_recommendation(recommendation_id: UUID, user: CurrentUser) -> dict[str, Any]:
-    result = await decisions_for(user).get_recommendation(recommendation_id)
+    result = await decisions_for(user).get_recommendation(recommendation_id, str(user.user_id))
     if result is None:
         raise HTTPException(status_code=404, detail="recommendation_not_found")
     return result
@@ -502,6 +621,8 @@ async def decide_recommendation(
     user: CurrentUser,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
+    if user.role == "auditor":
+        raise HTTPException(403, detail={"code": "decision_actor_forbidden"})
     if user.tenant_id != settings.tenant_id:
         raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
     try:
@@ -515,6 +636,8 @@ async def decide_recommendation(
             )
             background_tasks.add_task(worker.run_once)
         return result
+    except DecisionAuthorizationError as error:
+        raise HTTPException(403, detail={"code": error.code}) from error
     except DecisionConflict as error:
         raise HTTPException(
             status_code=409,
@@ -526,7 +649,7 @@ async def decide_recommendation(
 
 @app.get("/api/v1/approvals")
 async def list_approvals(user: CurrentUser) -> dict[str, Any]:
-    return await decisions_for(user).list_approvals()
+    return await decisions_for(user).list_approvals(str(user.user_id))
 
 
 @app.get("/api/v1/actions/{intent_id}")
@@ -567,4 +690,5 @@ async def run_tick(x_ares_tick_secret: str | None = Header(default=None)) -> Tic
         claimed=result.claimed,
         succeeded=result.succeeded,
         failed=result.failed,
+        sentinel_findings=result.sentinel_findings,
     )

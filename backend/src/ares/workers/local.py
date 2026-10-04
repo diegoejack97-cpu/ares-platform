@@ -17,6 +17,13 @@ def main() -> None:
         settings.supabase_secret_key.get_secret_value(),
         worker_name="ares-local-integrations",
     )
+    sentinel_worker = TickWorker(
+        settings.database_url,
+        settings.supabase_url,
+        settings.supabase_secret_key.get_secret_value(),
+        worker_name="ares-local-sentinels",
+    )
+    next_sentinel_scan = 0.0
     while True:
         try:
             result = worker.run_once(job_kinds=["integration.sync", "integration.project"])
@@ -26,6 +33,12 @@ def main() -> None:
                 )
         except Exception as error:
             logging.warning("integration_worker_unavailable: %s", type(error).__name__)
+        if time.monotonic() >= next_sentinel_scan:
+            try:
+                sentinel_worker.run_once(job_kinds=[], scan_sentinels=True)
+            except Exception as error:
+                logging.warning("sentinel_worker_unavailable: %s", type(error).__name__)
+            next_sentinel_scan = time.monotonic() + 60
         time.sleep(5)
 
 

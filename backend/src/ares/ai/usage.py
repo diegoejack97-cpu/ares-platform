@@ -5,6 +5,7 @@ from uuid import UUID
 
 import psycopg
 
+from ares.ai.models import model_profile
 from ares.ai.quotas import settle_on
 
 
@@ -31,15 +32,18 @@ def observe(metrics: Any, model_id: str) -> UsageObservation:
     if incoming <= 0 or cached > incoming:
         return UsageObservation(model_id=model_id)
     cost, version = None, None
-    # Standard text tariff snapshot: https://developers.openai.com/api/docs/models/gpt-5-mini
     # Cached tokens are a subset of input; reasoning tokens are already included in output.
-    if model_id in {"gpt-5-mini", "gpt-5-mini-2025-08-07"}:
+    try:
+        profile = model_profile(model_id)
+    except ValueError:
+        pass
+    else:
         cost = (
-            (incoming - cached) * Decimal("0.25")
-            + cached * Decimal("0.025")
-            + outgoing * Decimal("2")
+            (incoming - cached) * profile.input_per_million
+            + cached * profile.cached_input_per_million
+            + outgoing * profile.output_per_million
         ) / Decimal(1_000_000)
-        version = "openai-standard-text-2026-09-14"
+        version = profile.pricing_version
     return UsageObservation("observed", model_id, incoming, outgoing, cached, cost, version)
 
 

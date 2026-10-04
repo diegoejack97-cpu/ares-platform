@@ -16,8 +16,11 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ares.ai.budget import AIBudgetGuard
+from ares.ai.models import DEFAULT_MODEL
 from ares.ai.usage import record_usage
 from ares.connectors.provider import CRMProvider
+from ares.decision.authorization import DecisionAuthorizationError, role_can_decide
+from ares.decision.execution_guard import ExecutionBlocked, execution_contract
 from ares.decision.model_factory import RecommendationModelFactory
 from ares.decision.models import ActionDraft, DecideCommand
 from ares.decision.policy import PolicyEngine
@@ -38,7 +41,7 @@ class DecisionService:
         provider: CRMProvider,
         *,
         openai_api_key: str = "",
-        openai_model: str = "gpt-5-mini",
+        openai_model: str = DEFAULT_MODEL,
         estimated_cost_usd: Decimal = Decimal("0.01"),
     ) -> None:
         self._database_url = database_url
@@ -52,13 +55,92 @@ class DecisionService:
             estimated_cost_usd=estimated_cost_usd,
         )
 
-    async def create_recommendation(self, opportunity_id: UUID) -> dict[str, Any]:
-        return await asyncio.to_thread(self.create_recommendation_sync, opportunity_id)
+    def _actor_role(
+        self, connection: psycopg.Connection[Any], actor_id: str | None, *, lock: bool = False
+    ) -> str | None:
+        try:
+            actor = UUID(str(actor_id))
+        except (ValueError, TypeError):
+            return None
+        row = connection.execute(
+            """
+            select m.role::text as role from public.memberships m
+            join public.tenants t on t.id = m.tenant_id
+            where m.tenant_id = %s and m.user_id = %s and m.active and t.status = 'active'
+            """
+            + (" for share of m, t" if lock else ""),
+            (self._tenant_id, actor),
+        ).fetchone()
+        return str(row["role"]) if row else None
 
-    def create_recommendation_sync(self, opportunity_id: UUID) -> dict[str, Any]:
+    def _authorize_request(
+        self, connection: psycopg.Connection[Any], opportunity_id: UUID, actor_id: str
+    ) -> None:
+        role = self._actor_role(connection, actor_id, lock=True)
+        if role not in {"admin", "manager", "seller"}:
+            raise DecisionAuthorizationError()
+        row = connection.execute(
+            "select owner_user_id from public.ares_opportunities where tenant_id = %s and id = %s for share",
+            (self._tenant_id, opportunity_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("opportunity_not_found")
+        if role == "seller" and str(row["owner_user_id"]) != actor_id:
+            raise DecisionAuthorizationError("opportunity_scope_forbidden")
+
+    @staticmethod
+    def _authorize_decision(role: str | None, actor_id: str, row: dict[str, Any]) -> None:
+        if not role_can_decide(role, row.get("approval_required_role")):
+            raise DecisionAuthorizationError("approval_role_required")
+        if role == "seller" and str(row.get("owner_user_id")) != actor_id:
+            raise DecisionAuthorizationError("opportunity_scope_forbidden")
+
+    def _decision_permissions(
+        self, row: dict[str, Any], actor_role: str | None, actor_id: str | None
+    ) -> dict[str, Any]:
+        can_decide = False
+        expiry = row.get("approval_expires_at", row.get("expires_at"))
+        if (
+            actor_id
+            and row.get("status") == "pending"
+            and row.get("approval_status", "pending") == "pending"
+            and row.get("policy_verdict") == "require_approval"
+            and isinstance(expiry, datetime)
+            and expiry > datetime.now(UTC)
+        ):
+            try:
+                self._authorize_decision(actor_role, actor_id, row)
+                action = ActionDraft.model_validate(row["recommended_action"])
+                policy = self._policy.evaluate(action, self._provider.capabilities())
+                can_decide = policy.verdict != "deny" and (
+                    policy.verdict != "require_approval"
+                    or role_can_decide(actor_role, policy.required_role)
+                )
+            except (DecisionAuthorizationError, ValueError, KeyError):
+                pass
+        return {**row, "can_decide": can_decide}
+
+    async def can_request_recommendation(self, opportunity_id: UUID, actor_id: str) -> bool:
+        return await asyncio.to_thread(
+            self._can_request_recommendation_sync, opportunity_id, actor_id
+        )
+
+    def _can_request_recommendation_sync(self, opportunity_id: UUID, actor_id: str) -> bool:
+        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+            try:
+                self._authorize_request(connection, opportunity_id, actor_id)
+            except (DecisionAuthorizationError, ValueError):
+                return False
+        return True
+
+    async def create_recommendation(self, opportunity_id: UUID, actor_id: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self.create_recommendation_sync, opportunity_id, actor_id)
+
+    def create_recommendation_sync(self, opportunity_id: UUID, actor_id: str) -> dict[str, Any]:
         correlation_id = uuid4()
         auto_intent_id: UUID | None = None
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+            self._authorize_request(connection, opportunity_id, actor_id)
             existing = connection.execute(
                 """
                 select r.id as recommendation_id, r.run_id, r.status, r.version,
@@ -71,6 +153,12 @@ class DecisionService:
             ).fetchone()
             if existing is not None:
                 return dict(existing)
+            capacity = connection.execute(
+                "select agent_slots from public.tenant_quotas where tenant_id=%s",
+                (self._tenant_id,),
+            ).fetchone()
+            if capacity is not None and capacity["agent_slots"] == 0:
+                raise DecisionConflict("agent_capacity_disabled")
             row = connection.execute(
                 """
                 select o.id, o.state, o.score, o.priority, o.version,
@@ -155,6 +243,8 @@ class DecisionService:
         output = generated.output
         policy = self._policy.evaluate(output.recommended_action, self._provider.capabilities())
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+            # Model latency must not keep permission granted after membership/owner changes.
+            self._authorize_request(connection, opportunity_id, actor_id)
             rec = connection.execute(
                 """
                 insert into public.recommendations (
@@ -373,15 +463,21 @@ class DecisionService:
         self, recommendation_id: UUID, command: DecideCommand, actor_id: str
     ) -> dict[str, Any]:
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+            actor_role = self._actor_role(connection, actor_id, lock=True)
+            if actor_role not in {"admin", "manager", "seller"}:
+                raise DecisionAuthorizationError()
             row = connection.execute(
                 """
                 select r.*, p.id as policy_decision_id, p.verdict as policy_verdict,
-                  a.id as approval_id, a.status as approval_status, a.expires_at as approval_expires_at
+                  a.id as approval_id, a.status as approval_status, a.expires_at as approval_expires_at,
+                  a.required_role::text as approval_required_role, o.owner_user_id
                 from public.recommendations r
                 join public.policy_decisions p on p.tenant_id = r.tenant_id
                   and p.recommendation_id = r.id
                 left join public.approval_requests a on a.tenant_id = r.tenant_id
                   and a.recommendation_id = r.id
+                join public.ares_opportunities o on o.tenant_id = r.tenant_id
+                  and o.id = r.opportunity_id
                 where r.tenant_id = %s and r.id = %s
                 for update of r
                 """,
@@ -389,6 +485,7 @@ class DecisionService:
             ).fetchone()
             if row is None:
                 raise ValueError("recommendation_not_found")
+            self._authorize_decision(actor_role, actor_id, row)
             if int(row["version"]) != command.expected_version:
                 raise DecisionConflict("stale_recommendation", int(row["version"]))
             if row["status"] != "pending" or row["approval_status"] != "pending":
@@ -409,6 +506,12 @@ class DecisionService:
             )
             assert action is not None
             policy = self._policy.evaluate(action, self._provider.capabilities())
+            if (
+                command.verdict != "rejected"
+                and policy.verdict == "require_approval"
+                and not role_can_decide(actor_role, policy.required_role)
+            ):
+                raise DecisionAuthorizationError("approval_role_required")
             if command.verdict != "rejected" and policy.verdict == "deny":
                 raise DecisionConflict("action_denied_by_policy", int(row["version"]))
             decision = connection.execute(
@@ -545,6 +648,8 @@ class DecisionService:
                 raise ValueError("action_intent_not_found")
             if intent["status"] == "succeeded":
                 return {"intent_id": intent_id, "status": "succeeded", "duplicate": True}
+            if intent["status"] == "cancelled":
+                return {"intent_id": intent_id, "status": "cancelled", "duplicate": True}
             facts = intent["facts_json"]
             deal_facts = facts.get("deal", {})
             deal_id = str(
@@ -605,18 +710,76 @@ class DecisionService:
                 )
         payload = intent["action_payload"]
         try:
-            if intent["action_kind"] == "create_task":
-                result = self._provider.create_task(
-                    deal_id, str(payload["title"]), intent["idempotency_key"]
+            with execution_contract(self._database_url, self._tenant_id) as authorization:
+                policy = self._policy.evaluate(
+                    ActionDraft(action_kind=intent["action_kind"], payload=payload),
+                    self._provider.capabilities(),
                 )
-            elif intent["action_kind"] == "add_note":
-                result = self._provider.add_note(
-                    deal_id, str(payload["body"]), intent["idempotency_key"]
+                if policy.verdict == "deny":
+                    raise ExecutionBlocked("current_policy_denied")
+                if intent["actor_type"] == "human":
+                    role = self._actor_role(authorization, intent["actor_id"], lock=True)
+                    if role not in {"admin", "manager", "seller"}:
+                        raise ExecutionBlocked("decision_actor_forbidden")
+                    if policy.verdict == "require_approval" and not role_can_decide(
+                        role, policy.required_role
+                    ):
+                        raise ExecutionBlocked("approval_role_required")
+                    if role == "seller":
+                        owner = authorization.execute(
+                            "select owner_user_id from public.ares_opportunities "
+                            "where tenant_id=%s and id=%s for share",
+                            (self._tenant_id, intent["opportunity_id"]),
+                        ).fetchone()
+                        if not owner or str(owner["owner_user_id"]) != intent["actor_id"]:
+                            raise ExecutionBlocked("opportunity_scope_forbidden")
+                elif policy.verdict != "allow":
+                    raise ExecutionBlocked("approval_role_required")
+                if intent["action_kind"] == "create_task":
+                    result = self._provider.create_task(
+                        deal_id, str(payload["title"]), intent["idempotency_key"]
+                    )
+                elif intent["action_kind"] == "add_note":
+                    result = self._provider.add_note(
+                        deal_id, str(payload["body"]), intent["idempotency_key"]
+                    )
+                else:
+                    result = self._provider.update_deal_stage(
+                        deal_id, str(payload["stage"]), intent["idempotency_key"]
+                    )
+        except ExecutionBlocked as error:
+            with psycopg.connect(self._database_url) as connection:
+                connection.execute(
+                    "update public.action_attempts set status='failed',error_code=%s,finished_at=now() "
+                    "where tenant_id=%s and id=%s",
+                    (error.code, self._tenant_id, attempt["id"]),
                 )
-            else:
-                result = self._provider.update_deal_stage(
-                    deal_id, str(payload["stage"]), intent["idempotency_key"]
+                connection.execute(
+                    "update public.action_intents set status='cancelled',finished_at=now(),updated_at=now() "
+                    "where tenant_id=%s and id=%s",
+                    (self._tenant_id, intent_id),
                 )
+                connection.execute(
+                    "update public.ares_interventions set status='cancelled',closed_at=now() "
+                    "where tenant_id=%s and id=%s",
+                    (self._tenant_id, intent["intervention_id"]),
+                )
+                self._transition(
+                    connection,
+                    intent["opportunity_id"],
+                    "executing",
+                    "closed",
+                    f"action_execution_blocked:{error.code}",
+                    intent["correlation_id"],
+                    "system",
+                    "tick-worker:m3.1",
+                )
+                connection.execute(
+                    "update public.ares_opportunities set state='closed',closed_at=now(),version=version+1,updated_at=now() "
+                    "where tenant_id=%s and id=%s",
+                    (self._tenant_id, intent["opportunity_id"]),
+                )
+            raise
         except Exception as error:
             with psycopg.connect(self._database_url) as connection:
                 connection.execute(
@@ -730,13 +893,21 @@ class DecisionService:
             )
         return {"intent_id": intent_id, "status": "succeeded", "duplicate": result.duplicate}
 
-    async def get_recommendation(self, recommendation_id: UUID) -> dict[str, Any] | None:
-        return await asyncio.to_thread(self._get_recommendation_sync, recommendation_id)
+    async def get_recommendation(
+        self, recommendation_id: UUID, actor_id: str | None = None
+    ) -> dict[str, Any] | None:
+        return await asyncio.to_thread(self._get_recommendation_sync, recommendation_id, actor_id)
 
-    async def get_latest_for_opportunity(self, opportunity_id: UUID) -> dict[str, Any] | None:
-        return await asyncio.to_thread(self._get_latest_for_opportunity_sync, opportunity_id)
+    async def get_latest_for_opportunity(
+        self, opportunity_id: UUID, actor_id: str | None = None
+    ) -> dict[str, Any] | None:
+        return await asyncio.to_thread(
+            self._get_latest_for_opportunity_sync, opportunity_id, actor_id
+        )
 
-    def _get_latest_for_opportunity_sync(self, opportunity_id: UUID) -> dict[str, Any] | None:
+    def _get_latest_for_opportunity_sync(
+        self, opportunity_id: UUID, actor_id: str | None = None
+    ) -> dict[str, Any] | None:
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
             row = connection.execute(
                 """select id from public.recommendations
@@ -744,9 +915,11 @@ class DecisionService:
                    order by created_at desc limit 1""",
                 (self._tenant_id, opportunity_id),
             ).fetchone()
-        return self._get_recommendation_sync(row["id"]) if row else None
+        return self._get_recommendation_sync(row["id"], actor_id) if row else None
 
-    def _get_recommendation_sync(self, recommendation_id: UUID) -> dict[str, Any] | None:
+    def _get_recommendation_sync(
+        self, recommendation_id: UUID, actor_id: str | None = None
+    ) -> dict[str, Any] | None:
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
@@ -754,12 +927,15 @@ class DecisionService:
                   p.policy_set, p.policy_version, p.policy_hash,
                   a.id as approval_id, a.status as approval_status,
                   a.expires_at as approval_expires_at,
+                  a.required_role::text as approval_required_role, o.owner_user_id,
                   i.id as intent_id, i.status as action_status,
                   e.executed_action, e.result as execution_result
                 from public.recommendations r
                 join public.policy_decisions p on p.tenant_id = r.tenant_id and p.recommendation_id = r.id
                 left join public.approval_requests a on a.tenant_id = r.tenant_id
                   and a.recommendation_id = r.id
+                join public.ares_opportunities o on o.tenant_id = r.tenant_id
+                  and o.id = r.opportunity_id
                 left join public.action_intents i on i.tenant_id = r.tenant_id
                   and i.recommendation_id = r.id
                 left join public.action_executions e on e.tenant_id = i.tenant_id
@@ -768,16 +944,19 @@ class DecisionService:
                 """,
                 (self._tenant_id, recommendation_id),
             ).fetchone()
-        return dict(row) if row else None
+            role = self._actor_role(connection, actor_id) if row and actor_id else None
+        return self._decision_permissions(dict(row), role, actor_id) if row else None
 
-    async def list_approvals(self) -> dict[str, Any]:
-        return await asyncio.to_thread(self._list_approvals_sync)
+    async def list_approvals(self, actor_id: str | None = None) -> dict[str, Any]:
+        return await asyncio.to_thread(self._list_approvals_sync, actor_id)
 
-    def _list_approvals_sync(self) -> dict[str, Any]:
+    def _list_approvals_sync(self, actor_id: str | None = None) -> dict[str, Any]:
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
             rows = connection.execute(
                 """
                 select r.id, a.id as approval_id, a.status, a.required_role,
+                  a.required_role::text as approval_required_role, o.owner_user_id,
+                  a.status as approval_status, a.expires_at as approval_expires_at,
                   a.version as approval_version, a.expires_at, a.created_at,
                   r.id as recommendation_id, r.version,
                   r.recommended_action, r.rationale, r.confidence, r.alternatives,
@@ -794,7 +973,11 @@ class DecisionService:
                 """,
                 (self._tenant_id,),
             ).fetchall()
-        return {"items": [dict(row) for row in rows], "total": len(rows)}
+            role = self._actor_role(connection, actor_id) if actor_id else None
+        return {
+            "items": [self._decision_permissions(dict(row), role, actor_id) for row in rows],
+            "total": len(rows),
+        }
 
     async def get_action(self, intent_id: UUID) -> dict[str, Any] | None:
         return await asyncio.to_thread(self._get_action_sync, intent_id)

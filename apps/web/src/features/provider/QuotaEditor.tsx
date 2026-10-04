@@ -9,6 +9,8 @@ import { setQuota } from "./api";
 const schema = z
   .object({
     seats_limit: z.number().int().min(0),
+    agent_slots: z.number().int().min(0),
+    sentinel_slots: z.number().int().min(0),
     ai_daily_budget_brl: z.number().min(0),
     ai_monthly_budget_brl: z.number().min(0),
     usd_brl_rate: z.number().positive(),
@@ -23,13 +25,15 @@ export function QuotaEditor({ data }: { data: TenantConfiguration }) {
     defaultValues: data.quota
       ? {
           seats_limit: data.quota.seats_limit,
+          agent_slots: data.quota.agent_slots,
+          sentinel_slots: data.quota.sentinel_slots,
           ai_daily_budget_brl: Number(data.quota.ai_daily_budget_brl),
           ai_monthly_budget_brl: Number(data.quota.ai_monthly_budget_brl),
           usd_brl_rate: Number(data.quota.usd_brl_rate),
           rate_source: data.quota.rate_source,
           reason: "",
         }
-      : undefined,
+      : { agent_slots: 1, sentinel_slots: 1 },
   });
   const mutation = useMutation({
     mutationFn: (values: z.infer<typeof schema>) =>
@@ -56,6 +60,8 @@ export function QuotaEditor({ data }: { data: TenantConfiguration }) {
         {(
           [
             ["seats_limit", "Licenças contratadas"],
+            ["agent_slots", "Capacidade de agentes ativos"],
+            ["sentinel_slots", "Capacidade de sentinelas ativas"],
             ["ai_daily_budget_brl", "Orçamento diário (BRL)"],
             ["ai_monthly_budget_brl", "Orçamento mensal (BRL)"],
             ["usd_brl_rate", "Reais por dólar (USD/BRL)"],
@@ -67,11 +73,21 @@ export function QuotaEditor({ data }: { data: TenantConfiguration }) {
               id={key}
               type="number"
               min="0"
-              step={key === "seats_limit" ? "1" : "0.000001"}
+              step={
+                ["seats_limit", "agent_slots", "sentinel_slots"].includes(key)
+                  ? "1"
+                  : "0.000001"
+              }
               {...form.register(key, { valueAsNumber: true })}
             />
           </div>
         ))}
+        <p className="provider-note">
+          Há uma rotina de agente (follow-up e triagem) e uma sentinela (SLA)
+          disponíveis hoje. Zero desativa a respectiva rotina; capacidade acima
+          de um fica reservada para futuras rotinas, sem ativá-las
+          automaticamente.
+        </p>
         <label htmlFor="rate-source">Fonte e data da taxa</label>
         <Input id="rate-source" {...form.register("rate_source")} />
         <label htmlFor="quota-reason">Motivo da alteração de cotas</label>

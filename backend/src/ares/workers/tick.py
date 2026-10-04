@@ -12,11 +12,13 @@ from psycopg.rows import dict_row
 from ares.config import get_settings
 from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
 from ares.connectors.provider import CRMProvider
+from ares.decision.execution_guard import ExecutionBlocked
 from ares.decision.service import DecisionService
 from ares.event_journal.models import IncomingCRMEvent
 from ares.event_journal.service import PostgresEventJournal
 from ares.integrations.service import IntegrationError, IntegrationService
 from ares.intelligence.service import IntelligenceService
+from ares.sentinels.service import SentinelService
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,7 @@ class TickResult:
     claimed: int = 0
     succeeded: int = 0
     failed: int = 0
+    sentinel_findings: int = 0
 
 
 class TickWorker:
@@ -44,7 +47,13 @@ class TickWorker:
         self._worker_name = worker_name
         self._provider = provider
 
-    def run_once(self, batch_size: int = 10, job_kinds: list[str] | None = None) -> TickResult:
+    def run_once(
+        self,
+        batch_size: int = 10,
+        job_kinds: list[str] | None = None,
+        *,
+        scan_sentinels: bool | None = None,
+    ) -> TickResult:
         correlation_id = uuid4()
         with psycopg.connect(self._database_url, row_factory=dict_row) as lock_connection:
             lock_row = lock_connection.execute(
@@ -69,6 +78,8 @@ class TickWorker:
                         failed += 1
                     else:
                         succeeded += 1
+                should_scan = job_kinds is None if scan_sentinels is None else scan_sentinels
+                findings = SentinelService(self._database_url).scan_sync() if should_scan else 0
                 self._record_tick(
                     correlation_id,
                     acquired=True,
@@ -76,7 +87,7 @@ class TickWorker:
                     succeeded=succeeded,
                     failed=failed,
                 )
-                return TickResult(True, len(jobs), succeeded, failed)
+                return TickResult(True, len(jobs), succeeded, failed, findings)
             finally:
                 lock_connection.execute("select pg_advisory_unlock(hashtext('ares.tick.worker'))")
 
@@ -134,9 +145,11 @@ class TickWorker:
             if self._provider is None:
                 raise RuntimeError("crm_provider_missing")
             intent_id = UUID(str(job["payload"]["intent_id"]))
-            DecisionService(
+            result = DecisionService(
                 self._database_url, UUID(str(job["tenant_id"])), self._provider
             ).execute_intent_sync(intent_id)
+            if result["status"] == "cancelled":
+                raise ExecutionBlocked("action_intent_cancelled")
         elif job["kind"] == "webhook.normalize":
             receipt_id = UUID(str(job["payload"]["receipt_id"]))
             with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
@@ -199,8 +212,11 @@ class TickWorker:
         if job["kind"] == "integration.sync":
             self._fail_integration(job, error)
             return
-        terminal = int(job["attempts"]) >= 3
-        error_code = type(error).__name__[:80]
+        blocked = isinstance(error, ExecutionBlocked)
+        terminal = blocked or int(job["attempts"]) >= 3
+        error_code = (
+            error.code if isinstance(error, ExecutionBlocked) else type(error).__name__[:80]
+        )
         with psycopg.connect(self._database_url) as connection:
             connection.execute(
                 """
@@ -213,7 +229,7 @@ class TickWorker:
                 where id = %s and tenant_id = %s
                 """,
                 (
-                    "dead_letter" if terminal else "queued",
+                    "failed" if blocked else "dead_letter" if terminal else "queued",
                     terminal,
                     terminal,
                     error_code,

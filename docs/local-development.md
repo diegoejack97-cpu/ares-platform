@@ -99,6 +99,20 @@ Na Policy M3, `add_note` é a única ação de baixo risco com `allow` e segue p
 
 `ARES_OPENAI_API_KEY` é opcional no desenvolvimento local. Sem chave, falha de modelo ou orçamento excedido, o ARES usa fallback determinístico, registra o modo degradado e mantém a aprovação humana. Nenhuma ação é perdida ou ganha autonomia adicional.
 
+Para habilitar IA real, configure `ARES_OPENAI_API_KEY` somente no `.env` da raiz e
+`ARES_OPENAI_MODEL=gpt-5.4`. Reinicie a API após alterar o ambiente. O chat e os agentes
+de triagem/follow-up compartilham o modelo. O GPT-5.4 usa raciocínio médio, limite de
+4.096 tokens de saída por chamada (incluindo raciocínio) e timeout de 90 segundos.
+O registro em `backend/src/ares/ai/models.py` mantém os limites de execução alinhados
+à reserva preventiva e às tarifas de entrada, cache e saída; GPT-5-mini continua suportado.
+As recomendações usam um schema fechado na OpenAI e passam novamente pela validação
+do domínio antes da Policy Layer.
+
+A chave válida não substitui a cota: `tenant_quotas` precisa de orçamento diário e
+mensal positivo, configurado pelo painel do provedor. O piloto M6 começa com zero;
+os limites devem ser definidos explicitamente pelo responsável. A conversão BRL do
+piloto usa a taxa sintética identificada em `rate_source`, não uma cotação de mercado.
+
 Para incluir o teste de integração PostgreSQL no pytest:
 
 ```powershell
@@ -151,6 +165,8 @@ select vault.create_secret(
 ```
 
 O valor de `ares_tick_secret` deve ser idêntico a `ARES_TICK_SECRET` no backend. Não armazene o segredo em migration ou commit.
+
+Depois da migration `20260927020000_sentinel_sla_findings.sql`, o tick tambÃ©m verifica atÃ© 50 novos prazos de SLA vencidos por ciclo e registra um achado por oportunidade e prazo. `GET /api/v1/sentinels` mostra os achados atuais do tenant. Em desenvolvimento, `ares.workers.local` executa essa verificaÃ§Ã£o a cada 60 segundos. Sem um tick concluÃ­do, o Radar indica que ainda aguarda a primeira verificaÃ§Ã£o.
 
 ## Encerramento
 

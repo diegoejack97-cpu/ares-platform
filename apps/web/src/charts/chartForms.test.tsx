@@ -132,7 +132,9 @@ describe("numeric coercion at the API boundary", () => {
 
     expect(points).toHaveLength(2);
     expect(points[0]).toEqual({ value: 125000, score: 0.92 });
-    expect(rows.filter((row) => Number.isFinite(row.deal_value))).toHaveLength(0);
+    expect(rows.filter((row) => Number.isFinite(row.deal_value))).toHaveLength(
+      0,
+    );
   });
 
   it("reads score as a 0..1 fraction, not a percentage", () => {

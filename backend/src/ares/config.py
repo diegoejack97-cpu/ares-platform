@@ -5,6 +5,8 @@ from uuid import UUID
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ares.ai.models import DEFAULT_MODEL
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -29,7 +31,7 @@ class Settings(BaseSettings):
     supabase_secret_key: SecretStr = SecretStr("")
     tick_secret: SecretStr = SecretStr("local-dev-tick-secret")
     openai_api_key: SecretStr = SecretStr("")
-    openai_model: str = "gpt-5-mini"
+    openai_model: str = DEFAULT_MODEL
     recommendation_estimated_cost_usd: float = 0.01
 
     @model_validator(mode="after")

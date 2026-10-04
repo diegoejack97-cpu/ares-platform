@@ -1,5 +1,31 @@
 # M6 — execução iniciada em 15/09/2026
 
+## Evolução do contrato por empresa (27/09/2026)
+
+O painel `/admin` agora apresenta o diretório de empresas com pacote, estado de
+liberação, vencimento, cobrança e número de licenças. Uma empresa nova começa
+suspensa. O operador do provedor atribui um dos pacotes documentados
+(`STELLAR`, `ARES Connect`, `ARES CRM`, completo com Connect ou completo com CRM),
+define o vencimento, configura cobrança e cotas, indica uma conta verificada
+como administrador inicial e só então pode liberá-la.
+Cada mudança exige motivo e versão atual, ocorre em transação e entra em
+`provider_audit`. A troca de dono do funil continua exigindo migração assistida.
+
+Novas rotas: `POST /api/v1/admin/tenants/{id}/package`,
+`POST /api/v1/admin/tenants/{id}/initial-admin` e
+`POST /api/v1/admin/tenants/{id}/status`. A indicação inicial só funciona
+enquanto a empresa não possui memberships; não concede ao provedor acesso
+regular à gestão dos usuários. No produto, a empresa segue
+administrando convites e memberships em `/licenses`, limitada pela cota de
+licenças definida pelo provedor. A suspensão da empresa invalida a autenticação
+de produto e a leitura direta via políticas RLS; o vencimento do ARES Connect
+bloqueia as rotas de produto desse módulo. A degradação por cobrança continua
+separada e preserva leitura, conforme a regra anterior.
+
+Migration adicional: `20260927010000_provider_tenant_status_gate.sql`. Os preços
+e prazos comerciais são informados por contrato; nenhum padrão comercial foi
+inventado. Aplicar a migration no banco alvo antes de habilitar o painel novo.
+
 Fontes: [plano de sprints, seção 3.6](https://app.notion.com/p/3c9e18aa7b0d810caecdc74de94dc34e),
 [painel do provedor e licenciamento](https://app.notion.com/p/3c9e18aa7b0d8188803ee4804910bcd0)
 e [modelo canônico](https://app.notion.com/p/3c9e18aa7b0d8138a606f0fd9f89278c).

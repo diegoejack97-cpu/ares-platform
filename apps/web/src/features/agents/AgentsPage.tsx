@@ -163,7 +163,10 @@ export function AgentsPage() {
         <div>
           <span className="eyebrow">ARES CONNECT / SUPERVISÃO</span>
           <h1>Agentes</h1>
-          <p>Execuções observadas, limites de autonomia e custo disponível.</p>
+          <p>
+            Execuções e custo dos agentes. A programação das verificações de SLA
+            fica em <Link to="/sentinels">Sentinelas</Link>.
+          </p>
           <Freshness timestamp={data?.freshness_at} />
         </div>
         <div className="agents-controls">
@@ -251,11 +254,8 @@ export function AgentsPage() {
               <Link to="/radar">Abrir Radar ARES</Link>
             </section>
           )}
-          <section
-            className="agents-explanation"
-            aria-labelledby="agent-limits"
-          >
-            <h2 id="agent-limits">Como interpretar esta leitura</h2>
+          <details className="agents-explanation">
+            <summary>Como interpretar esta leitura</summary>
             <dl>
               <div>
                 <dt>Autonomia supervisionada</dt>
@@ -289,7 +289,7 @@ export function AgentsPage() {
                 </dd>
               </div>
             </dl>
-          </section>
+          </details>
         </>
       ) : null}
     </main>

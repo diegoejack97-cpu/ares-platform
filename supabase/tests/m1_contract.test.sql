@@ -20,23 +20,23 @@ insert into auth.users (
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
 ) values
   (
-    '10000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated',
+    '11000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated',
     'seller-one@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()
   ),
   (
-    '10000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated',
+    '11000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated',
     'outsider@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()
   ),
   (
-    '10000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated',
+    '11000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated',
     'manager@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()
   ),
   (
-    '10000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated',
+    '11000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated',
     'admin@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()
   ),
   (
-    '10000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated',
+    '11000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated',
     'new-user@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()
   );
 
@@ -49,30 +49,30 @@ insert into public.tenant_quotas (
   tenant_id, seats_limit, ai_daily_budget_brl, ai_monthly_budget_brl,
   usd_brl_rate, rate_source, updated_by
 ) values
-  ('21000000-0000-0000-0000-000000000001', 10, 0, 0, 1, 'pgtap synthetic', '10000000-0000-0000-0000-000000000004'),
-  ('21000000-0000-0000-0000-000000000002', 10, 0, 0, 1, 'pgtap synthetic', '10000000-0000-0000-0000-000000000004');
+  ('21000000-0000-0000-0000-000000000001', 10, 0, 0, 1, 'pgtap synthetic', '11000000-0000-0000-0000-000000000004'),
+  ('21000000-0000-0000-0000-000000000002', 10, 0, 0, 1, 'pgtap synthetic', '11000000-0000-0000-0000-000000000004');
 
 insert into public.memberships (tenant_id, user_id, role) values
   (
     '21000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000001',
+    '11000000-0000-0000-0000-000000000001',
     'seller'
   ),
   (
     '21000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000003',
+    '11000000-0000-0000-0000-000000000003',
     'manager'
   ),
   (
     '21000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000004',
+    '11000000-0000-0000-0000-000000000004',
     'admin'
   );
 
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
-  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
+  '{"sub":"11000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
   true
 );
 
@@ -89,7 +89,7 @@ select results_eq(
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
+  '{"sub":"11000000-0000-0000-0000-000000000002","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
   true
 );
 
@@ -106,7 +106,7 @@ select results_eq(
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
+  '{"sub":"11000000-0000-0000-0000-000000000003","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
   true
 );
 
@@ -117,7 +117,7 @@ select lives_ok(
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
+  '{"sub":"11000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
   true
 );
 
@@ -130,23 +130,23 @@ select throws_ok(
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"10000000-0000-0000-0000-000000000004","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
+  '{"sub":"11000000-0000-0000-0000-000000000004","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
   true
 );
 
 select lives_ok(
-  $$insert into public.memberships (tenant_id, user_id, role) values ('21000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000005', 'seller')$$,
+  $$insert into public.memberships (tenant_id, user_id, role) values ('21000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000005', 'seller')$$,
   'admin can add a tenant membership'
 );
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
+  '{"sub":"11000000-0000-0000-0000-000000000003","role":"authenticated","app_metadata":{"active_tenant_id":"21000000-0000-0000-0000-000000000001"}}',
   true
 );
 
 select throws_ok(
-  $$insert into public.memberships (tenant_id, user_id, role) values ('21000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'seller')$$,
+  $$insert into public.memberships (tenant_id, user_id, role) values ('21000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000002', 'seller')$$,
   '42501',
   'new row violates row-level security policy for table "memberships"',
   'manager cannot add a tenant membership'

@@ -352,6 +352,11 @@ h1 {
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
 }
+.panel-heading > svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
 .panel-heading h2 {
   font-size: 15px;
   font-weight: 700;
@@ -519,11 +524,7 @@ h1 {
   color: var(--ink);
   background:
     linear-gradient(115deg, var(--well), var(--well)),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0 79px,
-      var(--well) 80px
-    );
+    repeating-linear-gradient(90deg, transparent 0 79px, var(--well) 80px);
 }
 .login-kicker {
   color: var(--jade-ink);
@@ -1702,10 +1703,17 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  width: max-content;
   margin-bottom: 22px;
   color: var(--ink);
   font-size: 12px;
   text-decoration: none;
+  white-space: nowrap;
+}
+.back-link > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 .detail-header {
   display: flex;
@@ -1847,7 +1855,15 @@ h1 {
   border-top: 1px solid var(--edge);
 }
 .timeline li > span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
   color: var(--jade-ink);
+}
+.timeline li > span svg {
+  width: 16px;
+  height: 16px;
 }
 .timeline strong {
   color: var(--ink);
@@ -1977,11 +1993,52 @@ h1 {
 }
 .decision-title {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
 }
-.decision-title span,
+.decision-title-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.decision-action-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid var(--edge);
+  border-radius: var(--control-radius);
+  background: var(--well);
+  color: var(--brasa-ink);
+}
+.decision-action-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.decision-policy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: var(--jade-ink);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.decision-policy svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+.decision-policy.policy-require_approval,
+.decision-policy.policy-deny {
+  color: var(--brasa-ink);
+}
+.decision-title-main > div > span,
 .executed-action span {
   color: var(--ink-3);
   font-size: 9px;
@@ -1993,9 +2050,6 @@ h1 {
   margin-top: 4px;
   color: var(--ink);
   font-size: 17px;
-}
-.decision-title svg {
-  color: var(--jade-ink);
 }
 .action-copy {
   margin-top: 12px;
@@ -2255,4 +2309,3 @@ h1 {
     transform-origin: left center;
   }
 }
-

@@ -85,8 +85,20 @@ function analytics(
 ): OpportunityAnalytics {
   return {
     stages: [
-      { label: "proposal", count: 48, total: "4891000.00", missing: 0, currency: "BRL" },
-      { label: "won", count: 20, total: "2060000.00", missing: 0, currency: "BRL" },
+      {
+        label: "proposal",
+        count: 48,
+        total: "4891000.00",
+        missing: 0,
+        currency: "BRL",
+      },
+      {
+        label: "won",
+        count: 20,
+        total: "2060000.00",
+        missing: 0,
+        currency: "BRL",
+      },
     ],
     signals: [{ label: "follow_up_overdue", count: 30 }],
     sla: [
@@ -143,7 +155,9 @@ describe("Radar charts read the server aggregate", () => {
     const option = [...captured].find(([label]) =>
       label.startsWith("Relação entre score e valor"),
     )?.[1];
-    const series = option?.series as Array<{ data: Array<{ value: number[] }> }>;
+    const series = option?.series as Array<{
+      data: Array<{ value: number[] }>;
+    }>;
     expect(series[0].data).toHaveLength(1);
     expect(series[0].data[0].value).toEqual([100, 180000]);
   });

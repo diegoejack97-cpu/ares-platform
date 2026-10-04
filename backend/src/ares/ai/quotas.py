@@ -8,6 +8,8 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 
+from ares.ai.models import model_profile
+
 
 @dataclass(frozen=True)
 class QuotaDecision:
@@ -17,11 +19,13 @@ class QuotaDecision:
 
 
 def estimate_usd(model: str, input_bytes: int, calls: int = 1) -> Decimal:
-    if model not in {"gpt-5-mini", "gpt-5-mini-2025-08-07"}:
-        raise ValueError("model_pricing_unconfigured")
+    profile = model_profile(model)
     # Bytes upper-bound tokens; allowance covers instructions, JSON schema and tool envelope.
     return (
-        (Decimal(input_bytes + 8192) * Decimal("0.25") + Decimal(900) * 2)
+        (
+            Decimal(input_bytes + 8192) * profile.input_per_million
+            + Decimal(profile.max_output_tokens) * profile.output_per_million
+        )
         * calls
         / Decimal(1_000_000)
     )

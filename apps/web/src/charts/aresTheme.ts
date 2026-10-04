@@ -115,8 +115,16 @@ export function registerAresTheme(tokens: AresThemeTokens) {
   registerTheme("ares", {
     textStyle: { fontFamily: tokens.font, color: tokens.ink },
     color: [tokens.brasa, tokens.aco, tokens.ambar, tokens.jade, tokens.lilas],
-    legend: { textStyle: { color: tokens.ink2, fontFamily: tokens.font, fontSize: 11 }, icon: "rect", itemWidth: 8, itemHeight: 8 },
-    axisPointer: { lineStyle: { color: tokens.ink3, type: "dashed", width: 1 }, label: { backgroundColor: tokens.raisedHi, color: tokens.ink } },
+    legend: {
+      textStyle: { color: tokens.ink2, fontFamily: tokens.font, fontSize: 11 },
+      icon: "rect",
+      itemWidth: 8,
+      itemHeight: 8,
+    },
+    axisPointer: {
+      lineStyle: { color: tokens.ink3, type: "dashed", width: 1 },
+      label: { backgroundColor: tokens.raisedHi, color: tokens.ink },
+    },
     categoryAxis: {
       axisLine: { lineStyle: { color: tokens.edge, width: 1 } },
       axisTick: { show: false },
@@ -142,7 +150,8 @@ export function aresTooltip(tokens: AresThemeTokens) {
     confine: true,
     transitionDuration: 0.22,
     padding: [10, 12],
-    extraCssText: "max-width: min(340px, 80vw); white-space: normal; line-height: 1.6;",
+    extraCssText:
+      "max-width: min(340px, 80vw); white-space: normal; line-height: 1.6;",
   };
 }
 

@@ -27,31 +27,50 @@ agregados; auditor lê tudo sem ações. `capabilities` informa o que a tela pod
 
 ## Blocos
 
-- **Agora** (retrato na data da consulta): abertas em risco, críticas (prioridade 0),
-  SLA vencido, próximas 6 h, sem prazo, sem responsável, aguardando decisão; valor em
-  risco por moeda (negócios sem valor ou sem moeda contados à parte, moedas nunca
-  somadas); fila prioritária com as 8 primeiras oportunidades na ordenação canônica do
-  Radar; aprovações pendentes (não limitadas ao período); ações falhas no período;
-  conexões degradadas/revogadas.
-- **Impacto ARES**: reutiliza `ImpactService.snapshot` — as mesmas fórmulas de
+- **Prioridades / Agora** (retrato na data da consulta): os quatro indicadores de
+  abertura são abertas em risco, críticas, SLA vencido e valor em risco por
+  moeda. A fila mostra cinco negócios inicialmente, com expansão até os oito
+  retornados pela API, na ordem canônica do Radar. Os detalhes incluem próximas
+  6 h, sem prazo, sem responsável, aguardando decisão, aprovações pendentes,
+  ações falhas e conexões degradadas ou revogadas. Negócios sem valor ou moeda
+  são contados à parte; moedas nunca são somadas.
+- **Resultados / Impacto ARES**: reutiliza `ImpactService.snapshot` — as mesmas fórmulas de
   `/impact/summary`, nunca uma cópia. `incremental_value` só aparece com
   `attribution_level = incremental_proven` e método registrado; senão "Não comprovado",
   nunca zero. Custo de IA declara "N de M execuções com custo medido".
-- **Análises** (ECharts, cada uma com tabela alternativa, definição, unidade, período,
+- **Resultados / Análises** (ECharts, cada uma com tabela alternativa, definição, unidade, período,
   fonte e frescor): fluxo de atenção por dia (abertas, trabalhadas, executadas, falhas);
   funil de intervenção por coorte sobre `opportunity_state_transitions`, na ordem da
   máquina de estados; sinais por tipo empilhados por dia; mapa de calor de quando os
   sinais são detectados (horário de processamento, UTC).
-- **Trilha recente**: os 25 eventos mais recentes entre transições de estado relevantes,
+- **Histórico e critérios / Trilha recente**: cinco eventos aparecem inicialmente,
+  com expansão para os 25 mais recentes entre transições de estado relevantes,
   decisões, execuções e outcomes, cada um com `correlation_id`; o Event Journal guarda
   a trilha completa.
-- **Definições e limitações**: sempre visíveis; cada rótulo de métrica tem um botão que
-  leva à sua definição (`#def-<chave>` funciona sem JS). Lista o que o painel não mostra:
+- **Definições e limitações**: disponíveis na área Histórico e critérios; cada
+  rótulo de métrica abre as fórmulas nessa área e leva à sua definição (`#def-<chave>`).
+  Lista o que o painel não mostra:
   metas, ranking de equipe, funil de etapas do CRM, totais entre moedas, grafo.
 
 Regras que a tela cumpre: dado ausente nunca vira zero; moedas separadas; influência
 não é causalidade; horários em UTC; nenhuma mutação (aprovar e assumir apontam para as
 telas existentes ou ficam desabilitadas com explicação).
+
+## Revisão de apresentação em 29/09/2026
+
+O Command Center agora abre em **Prioridades**, com quatro indicadores, cinco casos
+da fila e resumos expansíveis para os demais detalhes operacionais. **Resultados**
+mostra impacto e quatro análises com alternativa em tabela. **Histórico e critérios**
+abre com cinco eventos e permite expandir a trilha e as fórmulas. O botão de definição
+de qualquer indicador abre essa área e posiciona o foco na fórmula correspondente.
+No mobile, cada caso da fila usa uma ficha com rótulos explícitos.
+
+Aceite local: 15 testes de componente, typecheck, lint e build passaram. O ensaio
+real em Chrome cobriu a navegação, expansão, foco, quatro gráficos e suas tabelas,
+1440/700/390 px sem overflow, verificação axe WCAG 2.1 AA nas três áreas,
+teclado e temas claro/escuro. Capturas e relatório em
+`output/playwright/command-center/`. Os avisos de lint restantes são de arquivos
+fora desta tela; o build preserva o aviso conhecido de chunk principal grande.
 
 ## Verificação em 18/09/2026
 

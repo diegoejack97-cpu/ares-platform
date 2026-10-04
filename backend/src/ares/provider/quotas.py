@@ -12,6 +12,8 @@ from ares.provider.service import FIELDS, ProviderConflict, ProviderMissing, Pro
 class QuotaCommand(ProviderCommand):
     expected_version: int = Field(ge=1)
     seats_limit: int = Field(ge=0, le=100000)
+    agent_slots: int | None = Field(default=None, ge=0, le=100000)
+    sentinel_slots: int | None = Field(default=None, ge=0, le=100000)
     ai_daily_budget_brl: Decimal = Field(ge=0, max_digits=12, decimal_places=6)
     ai_monthly_budget_brl: Decimal = Field(ge=0, max_digits=12, decimal_places=6)
     usd_brl_rate: Decimal = Field(gt=0, max_digits=14, decimal_places=8)
@@ -47,10 +49,16 @@ def set_quota(
             "select * from public.tenant_quotas where tenant_id=%s for update", (tenant,)
         ).fetchone()
         updated = db.execute(
-            "insert into public.tenant_quotas(tenant_id,seats_limit,ai_daily_budget_brl,ai_monthly_budget_brl,usd_brl_rate,rate_source,updated_by) values(%s,%s,%s,%s,%s,%s,%s) on conflict(tenant_id) do update set seats_limit=excluded.seats_limit,ai_daily_budget_brl=excluded.ai_daily_budget_brl,ai_monthly_budget_brl=excluded.ai_monthly_budget_brl,usd_brl_rate=excluded.usd_brl_rate,rate_source=excluded.rate_source,updated_by=excluded.updated_by,updated_at=now() returning *",
+            "insert into public.tenant_quotas(tenant_id,seats_limit,agent_slots,sentinel_slots,ai_daily_budget_brl,ai_monthly_budget_brl,usd_brl_rate,rate_source,updated_by) values(%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict(tenant_id) do update set seats_limit=excluded.seats_limit,agent_slots=excluded.agent_slots,sentinel_slots=excluded.sentinel_slots,ai_daily_budget_brl=excluded.ai_daily_budget_brl,ai_monthly_budget_brl=excluded.ai_monthly_budget_brl,usd_brl_rate=excluded.usd_brl_rate,rate_source=excluded.rate_source,updated_by=excluded.updated_by,updated_at=now() returning *",
             (
                 tenant,
                 command.seats_limit,
+                command.agent_slots
+                if command.agent_slots is not None
+                else (previous["agent_slots"] if previous else 1),
+                command.sentinel_slots
+                if command.sentinel_slots is not None
+                else (previous["sentinel_slots"] if previous else 1),
                 command.ai_daily_budget_brl,
                 command.ai_monthly_budget_brl,
                 command.usd_brl_rate,

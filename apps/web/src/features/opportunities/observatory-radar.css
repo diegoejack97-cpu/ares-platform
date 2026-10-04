@@ -379,8 +379,12 @@
 .radar-v2.observatory .radar-intelligence-grid > .chart-matrix {
   border-top: 1px solid var(--edge);
 }
-.observatory .radar-intelligence-grid .chart-matrix .chart-plot { min-height: 320px; }
-.observatory .radar-intelligence-grid .chart-aging .chart-plot { min-height: 250px; }
+.observatory .radar-intelligence-grid .chart-matrix .chart-plot {
+  min-height: 320px;
+}
+.observatory .radar-intelligence-grid .chart-aging .chart-plot {
+  min-height: 250px;
+}
 @media (max-width: 1100px) {
   .radar-v2.observatory .radar-intelligence-grid > .chart-frame,
   .radar-v2.observatory .radar-intelligence-grid > .chart-aging,
@@ -394,17 +398,32 @@
     border-top: 0;
   }
 }
-.observatory .radar-intelligence-grid .chart-plot { min-height: 230px; padding: 4px; }
-.observatory .radar-intelligence-grid .chart-frame-header { gap: 8px; }
-.observatory .radar-intelligence-grid .chart-frame-heading { min-height: 46px; }
+.observatory .radar-intelligence-grid .chart-plot {
+  min-height: 230px;
+  padding: 4px;
+}
+.observatory .radar-intelligence-grid .chart-frame-header {
+  gap: 8px;
+}
+.observatory .radar-intelligence-grid .chart-frame-heading {
+  min-height: 46px;
+}
 .observatory .console-metrics dt,
 .observatory .console-metrics dd.metric-description,
 .observatory .focus-facts > div > span:first-child,
 .observatory .focus-facts .sla,
 .observatory .focus-title p,
-.observatory .focus-action > p { font-size: 11px; }
-.observatory .focus-dossier > footer { font-size: 10px; }
-.observatory .section-caption { font-family: var(--font-data); font-size: 10px; margin-bottom: 12px; }
+.observatory .focus-action > p {
+  font-size: 11px;
+}
+.observatory .focus-dossier > footer {
+  font-size: 10px;
+}
+.observatory .section-caption {
+  font-family: var(--font-data);
+  font-size: 10px;
+  margin-bottom: 12px;
+}
 .observatory .radar-intelligence-grid .chart-frame-header {
   flex-wrap: wrap;
 }
@@ -483,10 +502,18 @@
   border-bottom: 1px solid var(--edge);
   border-radius: 0;
 }
-.radar-v2.observatory .radar-table td:first-child { border-left: 2px solid transparent; border-radius: 0; }
-.radar-v2.observatory .radar-table td:last-child { border-right: 0; border-radius: 0; }
+.radar-v2.observatory .radar-table td:first-child {
+  border-left: 2px solid transparent;
+  border-radius: 0;
+}
+.radar-v2.observatory .radar-table td:last-child {
+  border-right: 0;
+  border-radius: 0;
+}
 .radar-v2.observatory .radar-table tr:focus-within td:first-child,
-.radar-v2.observatory .radar-table tr:hover td:first-child { border-left-color: var(--brasa); }
+.radar-v2.observatory .radar-table tr:hover td:first-child {
+  border-left-color: var(--brasa);
+}
 .radar-v2.observatory .radar-table-wrap {
   max-height: 400px;
 }
@@ -714,7 +741,9 @@
     border-right: 0;
     border-bottom: 1px solid var(--edge);
   }
-  .radar-v2.observatory .radar-intelligence-grid > .chart-frame:last-child { border-bottom: 0; }
+  .radar-v2.observatory .radar-intelligence-grid > .chart-frame:last-child {
+    border-bottom: 0;
+  }
   .observatory .chart-stage .chart-plot {
     display: block;
   }
@@ -738,6 +767,22 @@
   .observatory .radar-header-actions .freshness-chip {
     width: auto;
   }
+}
+.radar-operations-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.radar-operations-link:hover {
+  color: var(--brasa-ink);
+}
+.radar-operations-link svg {
+  width: 14px;
+  height: 14px;
 }
 @media (prefers-reduced-motion: reduce) {
   .observatory[data-fetching="true"] .sync-indicator i {

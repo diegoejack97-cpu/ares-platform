@@ -111,32 +111,34 @@ export function ChartFrame({
           <h2 id={`${id}-title`}>{title}</h2>
           <p>{definition}</p>
         </div>
-        <div
-          className="chart-view-toggle well"
-          role="group"
-          aria-label={`Visualização de ${title}`}
-        >
-          <button
-            type="button"
-            className="press"
-            aria-pressed={view === "chart"}
-            aria-controls={`${id}-chart`}
-            onClick={() => setView("chart")}
+        {!blank && (
+          <div
+            className="chart-view-toggle well"
+            role="group"
+            aria-label={`Visualização de ${title}`}
           >
-            <ChartBarIcon weight="bold" aria-hidden />
-            Gráfico
-          </button>
-          <button
-            type="button"
-            className="press"
-            aria-pressed={view === "table"}
-            aria-controls={`${id}-table`}
-            onClick={() => setView("table")}
-          >
-            <TableIcon weight="bold" aria-hidden />
-            Tabela
-          </button>
-        </div>
+            <button
+              type="button"
+              className="press"
+              aria-pressed={view === "chart"}
+              aria-controls={`${id}-chart`}
+              onClick={() => setView("chart")}
+            >
+              <ChartBarIcon weight="bold" aria-hidden />
+              Gráfico
+            </button>
+            <button
+              type="button"
+              className="press"
+              aria-pressed={view === "table"}
+              aria-controls={`${id}-table`}
+              onClick={() => setView("table")}
+            >
+              <TableIcon weight="bold" aria-hidden />
+              Tabela
+            </button>
+          </div>
+        )}
       </header>
       <div className="chart-frame-context">
         <span>{unit}</span>

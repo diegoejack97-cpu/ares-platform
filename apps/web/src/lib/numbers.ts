@@ -14,10 +14,18 @@ export function safeSum<T>(items: readonly T[], field: keyof T) {
     if (value === null || !Number.isFinite(total + value)) missing++;
     else total += value;
   }
-  return { total, missing, valid: items.length - missing, partial: missing > 0 };
+  return {
+    total,
+    missing,
+    valid: items.length - missing,
+    partial: missing > 0,
+  };
 }
 
-export function safePercent(value: unknown, denominator: unknown): number | null {
+export function safePercent(
+  value: unknown,
+  denominator: unknown,
+): number | null {
   const a = finiteNumber(value);
   const b = finiteNumber(denominator);
   if (a === null || b === null || b <= 0) return null;

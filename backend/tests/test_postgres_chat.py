@@ -1,3 +1,4 @@
+import json
 import os
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -8,6 +9,7 @@ import test_postgres_agents
 from psycopg.types.json import Jsonb
 from pydantic import SecretStr
 
+from ares.chat.search import OpportunitySearch, make_context
 from ares.chat.service import ChatFailure, ChatService
 from ares.config import Settings
 
@@ -121,3 +123,114 @@ def test_missing_model_stops_before_creating_messages(fixture, monkeypatch):
     with pytest.raises(ChatFailure) as error:
         service.prepare(user, user.tenant_id, "Resumo")
     assert error.value.code == "model_not_configured"
+
+
+def test_unscoped_greeting_is_private_and_does_not_call_model(fixture, monkeypatch):
+    db, _, seed = fixture
+    user, _ = seed()
+    other, _ = seed()
+    service = ChatService(Settings(openai_api_key=SecretStr("")))
+
+    @contextmanager
+    def connection(*args, **kwargs):
+        yield db
+
+    monkeypatch.setattr("ares.chat.service.psycopg.connect", connection)
+    monkeypatch.setattr("ares.ai.usage.psycopg.connect", connection)
+    prepared = service.prepare(user, None, "oi")
+    stream = "".join(service.stream(prepared))
+    assert "event: done" in stream
+    assert "event: tool" not in stream
+    assert service.history(user, None)["items"][-1]["assistant_text"].startswith("Olá!")
+    assert service.history(other, None)["items"] == []
+    usage = db.execute(
+        "select status,model_id from public.model_usage where tenant_id=%s and run_id=%s",
+        (user.tenant_id, prepared["run_id"]),
+    ).fetchone()
+    assert usage["status"] == "not_called" and usage["model_id"] is None
+
+
+def test_general_question_returns_available_records_without_model(fixture, monkeypatch):
+    db, _, seed = fixture
+    user, _ = seed()
+    other, _ = seed()
+    deal_id = db.execute(
+        "insert into public.deals(tenant_id,title,value,currency,external_stage) "
+        "values(%s,'Demonstração Alfa',12500,'BRL','proposta') returning id",
+        (user.tenant_id,),
+    ).fetchone()["id"]
+    db.execute(
+        "insert into public.deals(tenant_id,title,value,currency,external_stage) "
+        "values(%s,'Expansão Beta',8000,'BRL','negotiation')",
+        (user.tenant_id,),
+    )
+
+    @contextmanager
+    def connection(*args, **kwargs):
+        yield db
+
+    monkeypatch.setattr("ares.chat.service.psycopg.connect", connection)
+    monkeypatch.setattr("ares.chat.search.psycopg.connect", connection)
+    monkeypatch.setattr("ares.ai.usage.psycopg.connect", connection)
+    service = ChatService(Settings(openai_api_key=SecretStr("")))
+    prepared = service.prepare(user, None, "me dê alguns dados sobre as oportunidades disponíveis")
+    stream = "".join(service.stream(prepared))
+    assert "Demonstração Alfa" in stream
+    assert "BRL 12.500,00" in stream
+    assert "event: done" in stream
+    assert service.history(user, None)["items"][-1]["status"] == "succeeded"
+    assert service.history(other, None)["items"] == []
+    prepared = service.prepare(user, None, "qual a oportunidade temos hoje")
+    stream = "".join(service.stream(prepared))
+    assert "Demonstração Alfa" in stream
+    assert "event: done" in stream
+    assert "event: error" not in stream
+    usage = db.execute(
+        "select status from public.model_usage where tenant_id=%s and run_id=%s",
+        (user.tenant_id, prepared["run_id"]),
+    ).fetchone()
+    assert usage["status"] == "not_called"
+    prepared = service.prepare(user, None, "quais oportunidades estão em negociação?")
+    stream = "".join(service.stream(prepared))
+    assert "Expansão Beta" in stream
+    assert "Demonstração Alfa" not in stream
+    assert "event: done" in stream
+    context = OpportunitySearch(service.settings).read(user, "oportunidades em proposta")
+    assert any(item["id"] == str(deal_id) for item in json.loads(context["content"])["matches"])
+
+
+def test_unscoped_search_stream_persists_evidence_without_writing_crm(fixture, monkeypatch):
+    db, _, seed = fixture
+    user, _ = seed()
+    service = ChatService(Settings(openai_api_key=SecretStr("synthetic")))
+    found = make_context(
+        {"matches": [{"title": "Oportunidade de teste", "source": "Banco ARES"}]},
+        source="Banco ARES",
+    )
+
+    @contextmanager
+    def connection(*args, **kwargs):
+        yield db
+
+    monkeypatch.setattr("ares.chat.service.psycopg.connect", connection)
+    monkeypatch.setattr("ares.chat.search.OpportunitySearch.read", lambda *args: found)
+    monkeypatch.setattr(
+        "ares.chat.service.AIBudgetGuard.reserve", lambda *args: SimpleNamespace(allowed=True)
+    )
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            self.get_context = kwargs["tools"][0]
+
+        def run(self, *args, **kwargs):
+            self.get_context()
+            yield SimpleNamespace(event="ToolCallCompleted")
+            yield SimpleNamespace(event="RunContent", content="Oportunidade de teste.")
+            yield SimpleNamespace(event="RunCompleted", metrics=None)
+
+    monkeypatch.setattr("ares.chat.service.Agent", FakeAgent)
+    prepared = service.prepare(user, None, "Busque Oportunidade de teste")
+    stream = "".join(service.stream(prepared))
+    assert "event: status" in stream and "event: context" in stream
+    assert "event: token" in stream and "event: done" in stream
+    assert service.history(user, None)["items"][-1]["context_json"]["source"] == "Banco ARES"

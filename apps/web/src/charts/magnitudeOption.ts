@@ -67,7 +67,11 @@ function tooltip(spec: MagnitudeSpec, tokens: AresThemeTokens) {
   };
 }
 
-function markLine(spec: MagnitudeSpec, tokens: AresThemeTokens, axis: "x" | "y") {
+function markLine(
+  spec: MagnitudeSpec,
+  tokens: AresThemeTokens,
+  axis: "x" | "y",
+) {
   if (!spec.marker) return undefined;
   return {
     silent: true,
@@ -76,10 +80,15 @@ function markLine(spec: MagnitudeSpec, tokens: AresThemeTokens, axis: "x" | "y")
       formatter: spec.marker.label,
       color: tokens.ink2,
       fontSize: 10,
-      position: axis === "y" ? ("insideEndTop" as const) : ("insideEndTop" as const),
+      position:
+        axis === "y" ? ("insideEndTop" as const) : ("insideEndTop" as const),
     },
     lineStyle: { color: tokens.ink3, width: 1, type: "solid" as const },
-    data: [axis === "y" ? { yAxis: spec.marker.value } : { xAxis: spec.marker.value }],
+    data: [
+      axis === "y"
+        ? { yAxis: spec.marker.value }
+        : { xAxis: spec.marker.value },
+    ],
   };
 }
 
@@ -207,12 +216,16 @@ export function magnitudeOption(
           const step = steps[position];
           if (!step) return "";
           const amount =
-            step.row.value === null ? "Não informado" : spec.format(step.row.value);
+            step.row.value === null
+              ? "Não informado"
+              : spec.format(step.row.value);
           const drop =
             step.conversion === null
               ? "Primeira etapa do recorte."
               : `${(step.conversion * 100).toFixed(0)}% do que entrou na etapa anterior` +
-                (worst?.index === position ? " — a maior queda do funil." : ".");
+                (worst?.index === position
+                  ? " — a maior queda do funil."
+                  : ".");
           return `<strong>${step.row.label}</strong><br/>${spec.measure}: ${amount}<br/>${drop}`;
         },
       },
@@ -277,7 +290,11 @@ export function magnitudeOption(
           bottom: 6,
           left: 6,
           right: 6,
-          itemStyle: { borderColor: tokens.edgeDark, borderWidth: 2, gapWidth: 2 },
+          itemStyle: {
+            borderColor: tokens.edgeDark,
+            borderWidth: 2,
+            gapWidth: 2,
+          },
           label: {
             show: true,
             color: tokens.ink,

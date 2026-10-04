@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any
 
 from ares.intelligence.models import CanonicalEvent, SignalDraft
@@ -11,6 +12,21 @@ RULE_VERSION = "m2.1"
 
 def _truthy(value: Any) -> bool:
     return value not in (None, "", False, [], {})
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if isfinite(number) and number >= 0 else None
+
+
+def _days(value: Any) -> int | None:
+    number = _number(value)
+    return int(number) if number is not None and number.is_integer() else None
 
 
 def _iso(value: Any) -> datetime | None:
@@ -44,8 +60,8 @@ def follow_up_overdue(event: CanonicalEvent) -> SignalDraft | None:
 
 
 def proposal_stalled(event: CanonicalEvent) -> SignalDraft | None:
-    days = int(event.data.get("days_in_stage") or 0)
-    if event.data.get("stage") == "proposal" and days >= 5:
+    days = _days(event.data.get("days_in_stage"))
+    if event.data.get("stage") == "proposal" and days is not None and days >= 5:
         return _draft(
             "proposal_stalled", "SIG-PROPOSAL-STALLED", 4, days_in_stage=days, threshold_days=5
         )
@@ -65,18 +81,19 @@ def unowned_deal(event: CanonicalEvent) -> SignalDraft | None:
 
 
 def high_value_at_risk(event: CanonicalEvent) -> SignalDraft | None:
-    value = float(event.data.get("value") or 0)
-    has_risk = (
-        _truthy(event.data.get("risk")) or int(event.data.get("days_since_contact") or 0) >= 7
+    value = _number(event.data.get("value"))
+    days_since_contact = _days(event.data.get("days_since_contact"))
+    has_risk = _truthy(event.data.get("risk")) or (
+        days_since_contact is not None and days_since_contact >= 7
     )
-    if value >= 50_000 and has_risk:
+    if value is not None and value >= 50_000 and has_risk:
         return _draft("high_value_at_risk", "SIG-HIGH-VALUE-RISK", 5, value=value, threshold=50_000)
     return None
 
 
 def contact_inactive(event: CanonicalEvent) -> SignalDraft | None:
-    days = int(event.data.get("days_since_contact") or 0)
-    if days >= 7:
+    days = _days(event.data.get("days_since_contact"))
+    if days is not None and days >= 7:
         return _draft(
             "contact_inactive",
             "SIG-CONTACT-INACTIVE",
@@ -89,10 +106,10 @@ def contact_inactive(event: CanonicalEvent) -> SignalDraft | None:
 
 def close_date_at_risk(event: CanonicalEvent) -> SignalDraft | None:
     close_at = _iso(event.data.get("expected_close_at"))
-    days_since_contact = int(event.data.get("days_since_contact") or 0)
+    days_since_contact = _days(event.data.get("days_since_contact"))
     if close_at is not None:
         days_left = (close_at - event.occurred_at).total_seconds() / 86_400
-        if 0 <= days_left <= 7 and days_since_contact >= 3:
+        if 0 <= days_left <= 7 and days_since_contact is not None and days_since_contact >= 3:
             return _draft(
                 "close_date_at_risk",
                 "SIG-CLOSE-DATE-RISK",

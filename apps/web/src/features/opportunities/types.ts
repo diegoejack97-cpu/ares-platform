@@ -46,6 +46,31 @@ export interface OpportunityPage {
   freshness_at: string;
 }
 
+export interface SentinelFinding {
+  id: string;
+  opportunity_id: string;
+  rule_id: string;
+  rule_title?: string;
+  rule_kind?: "sla_overdue" | "unassigned" | "stale";
+  rule_version: string;
+  due_at: string;
+  detected_at: string;
+  evidence: Record<string, unknown>;
+  correlation_id: string;
+  title: string | null;
+  state: string;
+  priority: number;
+}
+
+export interface SentinelPage {
+  items: SentinelFinding[];
+  truncated: boolean;
+  rule: { id: string; version: string; definition: string };
+  source: string;
+  freshness_at: string;
+  checked_at: string | null;
+}
+
 export interface Evidence {
   id: string;
   event_id: string;
@@ -80,6 +105,7 @@ export interface OpportunityDetail {
   timeline: TimelineEntry[];
   recommendation: Recommendation | null;
   recommendation_status: string;
+  can_request_recommendation?: boolean;
 }
 
 export interface ActionDraft {
@@ -115,6 +141,9 @@ export interface Recommendation {
   approval_id: string | null;
   approval_status: string | null;
   approval_expires_at: string | null;
+  /** Server authorization for the current member; absence keeps actions hidden. */
+  can_decide?: boolean;
+  approval_required_role?: string | null;
   intent_id: string | null;
   action_status: string | null;
   executed_action: ActionDraft | null;
@@ -167,7 +196,11 @@ export interface OpportunityAnalytics {
     currency: string;
   }>;
   signals: Array<{ label: string; count: number }>;
-  sla: Array<{ bucket: "overdue" | "soon" | "later" | "missing"; count: number; total: Numeric | null }>;
+  sla: Array<{
+    bucket: "overdue" | "soon" | "later" | "missing";
+    count: number;
+    total: Numeric | null;
+  }>;
   opened: Array<{ day: string; count: number }>;
   activity: Array<{ day: string; count: number }>;
   rhythm: Array<{ weekday: number; band: number; count: number }>;

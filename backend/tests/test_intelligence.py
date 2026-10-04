@@ -63,6 +63,21 @@ def test_non_deal_events_do_not_create_commercial_opportunities() -> None:
     assert evaluate(event) == []
 
 
+def test_invalid_crm_numbers_do_not_fail_or_create_numeric_signals() -> None:
+    event = fixture_event(
+        value="Infinity",
+        days_in_stage="n/a",
+        days_since_contact="NaN",
+        risk="",
+        next_follow_up_at=None,
+    )
+    signals = {signal.signal_type for signal in evaluate(event)}
+    assert "high_value_at_risk" not in signals
+    assert "proposal_stalled" not in signals
+    assert "contact_inactive" not in signals
+    assert "close_date_at_risk" not in signals
+
+
 def test_score_is_decomposed_and_adds_up() -> None:
     signals = [signal.model_dump() for signal in evaluate(fixture_event())]
     score = calculate_score(signals, 125_000)

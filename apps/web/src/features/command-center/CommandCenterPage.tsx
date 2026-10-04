@@ -67,6 +67,24 @@ const CommandCenterCharts = lazy(() =>
 
 const DAYS_KEY = "ares-cc-days";
 const WINDOWS = [7, 30, 90] as const;
+type CenterView = "priorities" | "results" | "evidence";
+const VIEWS: { id: CenterView; label: string; description: string }[] = [
+  {
+    id: "priorities",
+    label: "Prioridades",
+    description: "Riscos, prazos e próximos negócios a tratar",
+  },
+  {
+    id: "results",
+    label: "Resultados",
+    description: "Intervenções, valor observado e tendências",
+  },
+  {
+    id: "evidence",
+    label: "Histórico e critérios",
+    description: "Eventos, fontes e cálculo dos indicadores",
+  },
+];
 
 function storedDays(): number {
   try {
@@ -131,6 +149,17 @@ function MetricLabel({
 
 export function CommandCenterPage() {
   const [days, setDays] = useState(storedDays);
+  const [activeView, setActiveView] = useState<CenterView>(() =>
+    window.location.hash.startsWith("#def-") ? "evidence" : "priorities",
+  );
+  const [focusDefinition, setFocusDefinition] = useState<string | null>(() =>
+    window.location.hash.startsWith("#def-")
+      ? window.location.hash.slice(1)
+      : null,
+  );
+  const [showDefinitions, setShowDefinitions] = useState(() =>
+    window.location.hash.startsWith("#def-"),
+  );
   const reduced = useReducedMotion();
   const now = useLiveClock();
   const query = useQuery({
@@ -151,21 +180,25 @@ export function CommandCenterPage() {
         ? "stale"
         : "ready";
   const refetch = useCallback(() => void query.refetch(), [query]);
-  const jumpTo = useCallback(
-    (id: string) => {
+  const jumpTo = useCallback((id: string) => {
+    setShowDefinitions(true);
+    setFocusDefinition(id);
+    setActiveView("evidence");
+  }, []);
+  useEffect(() => {
+    if (activeView !== "evidence" || !focusDefinition || !data) return;
+    const frame = requestAnimationFrame(() => {
+      const id = focusDefinition;
       const element = document.getElementById(id);
       element?.scrollIntoView?.({
         block: "center",
         behavior: reduced ? "auto" : "smooth",
       });
       element?.focus({ preventScroll: true });
-    },
-    [reduced],
-  );
-  useEffect(() => {
-    if (window.location.hash.startsWith("#def-") && data)
-      jumpTo(window.location.hash.slice(1));
-  }, [data, jumpTo]);
+      setFocusDefinition(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeView, data, focusDefinition, reduced]);
   const definitions = useMemo(
     () => new Map((data?.definitions ?? []).map((item) => [item.key, item])),
     [data],
@@ -196,9 +229,8 @@ export function CommandCenterPage() {
           <span className="eyebrow">COMMAND CENTER</span>
           <h1>Command Center</h1>
           <p>
-            O que exige atenção agora e qual valor está em risco ou foi
-            associado às intervenções — cada número com fonte, período e
-            definição.
+            Prioridades da operação, resultados observados e evidências da
+            atuação do ARES.
           </p>
           {scopeCopy ? <p className="cc-scope">{scopeCopy}</p> : null}
         </div>
@@ -292,6 +324,20 @@ export function CommandCenterPage() {
       {query.isPending && !data ? <PageSkeleton /> : null}
       {data ? (
         <div className="console-stack">
+          <nav className="cc-view-nav" aria-label="Áreas do Command Center">
+            {VIEWS.map((view) => (
+              <button
+                key={view.id}
+                type="button"
+                className="cc-view-button"
+                aria-pressed={activeView === view.id}
+                onClick={() => setActiveView(view.id)}
+              >
+                <strong>{view.label}</strong>
+                <span>{view.description}</span>
+              </button>
+            ))}
+          </nav>
           <MetaRow
             label="Proveniência do painel"
             items={[
@@ -309,36 +355,54 @@ export function CommandCenterPage() {
               ["Consulta em", dateTime(data.computed_at)],
             ]}
           />
-          <NowBlock
-            data={data}
-            definitions={definitions}
-            onJump={jumpTo}
-            now={now}
-          />
-          <ImpactBlock data={data} definitions={definitions} onJump={jumpTo} />
-          <Suspense
-            fallback={
-              <section
-                className="cc-analysis-grid intelligence-loading"
-                aria-label="Preparando análises do Command Center"
-                aria-busy="true"
-              >
-                <i />
-                <i />
-                <i />
-                <i />
-              </section>
-            }
-          >
-            <CommandCenterCharts
+          {activeView === "priorities" ? (
+            <NowBlock
               data={data}
-              freshness={query.dataUpdatedAt || null}
-              state={chartState}
-              onRetry={refetch}
+              definitions={definitions}
+              onJump={jumpTo}
+              now={now}
             />
-          </Suspense>
-          <ActivityBlock data={data} now={now} />
-          <DefinitionsBlock data={data} />
+          ) : null}
+          {activeView === "results" ? (
+            <>
+              <ImpactBlock
+                data={data}
+                definitions={definitions}
+                onJump={jumpTo}
+              />
+              <Suspense
+                fallback={
+                  <section
+                    className="cc-analysis-grid intelligence-loading"
+                    aria-label="Preparando análises do Command Center"
+                    aria-busy="true"
+                  >
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </section>
+                }
+              >
+                <CommandCenterCharts
+                  data={data}
+                  freshness={query.dataUpdatedAt || null}
+                  state={chartState}
+                  onRetry={refetch}
+                />
+              </Suspense>
+            </>
+          ) : null}
+          {activeView === "evidence" ? (
+            <>
+              <ActivityBlock data={data} now={now} />
+              <DefinitionsBlock
+                data={data}
+                expanded={showDefinitions}
+                onToggle={() => setShowDefinitions((current) => !current)}
+              />
+            </>
+          ) : null}
         </div>
       ) : null}
     </main>
@@ -366,38 +430,32 @@ function FixConnection({ enabled }: { enabled: boolean }) {
 
 function PageSkeleton() {
   return (
-    <div className="console-stack" aria-busy="true">
-      <Skeleton className="h-6 w-2/3" />
+    <div
+      className="console-stack"
+      aria-busy="true"
+      aria-label="Carregando Command Center"
+    >
+      <div className="cc-view-nav" aria-hidden="true">
+        {VIEWS.map((view) => (
+          <Skeleton key={view.id} className="h-16 w-full" />
+        ))}
+      </div>
       <section className="panel cc-now">
+        <div className="panel-heading">
+          <Skeleton className="h-6 w-28" />
+        </div>
         <div className="panel-body cc-now-grid">
-          <div className="cc-now-strip">
-            {Array.from({ length: 8 }, (_, index) => (
-              <Skeleton key={index} className="h-10 w-full" />
+          <div className="cc-primary-stats">
+            {Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} className="h-28 w-full" />
             ))}
           </div>
-          <div className="console-stack">
+          <div className="cc-now-main">
+            <Skeleton className="h-8 w-44" />
             {Array.from({ length: 5 }, (_, index) => (
-              <Skeleton key={index} className="h-9 w-full" />
+              <Skeleton key={index} className="h-14 w-full" />
             ))}
           </div>
-        </div>
-      </section>
-      <section className="panel">
-        <div className="panel-body">
-          <Skeleton className="h-20 w-full" />
-        </div>
-      </section>
-      <section className="cc-analysis-grid intelligence-loading" aria-hidden>
-        <i />
-        <i />
-        <i />
-        <i />
-      </section>
-      <section className="panel">
-        <div className="panel-body">
-          {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-8 w-full" />
-          ))}
         </div>
       </section>
     </div>
@@ -419,6 +477,8 @@ function NowBlock({
 }) {
   const block = data.now;
   const coverage = data.coverage;
+  const [showAllQueue, setShowAllQueue] = useState(false);
+  const visibleQueue = showAllQueue ? block.queue : block.queue.slice(0, 5);
   const canApprove = data.capabilities.approve;
   const approveDisabledTitle = "Aprovar exige papel gestor ou admin.";
   const assignTitle =
@@ -458,7 +518,7 @@ function NowBlock({
       </div>
       <div className="panel-body cc-now-grid">
         <div className="cc-now-strip">
-          <dl>
+          <dl className="cc-primary-stats">
             {stat("open_at_risk", "Abertas em risco", block.open_at_risk)}
             {stat(
               "critical",
@@ -476,34 +536,7 @@ function NowBlock({
                 <StatusBadge tone="critical">vencido</StatusBadge>
               ) : null,
             )}
-            {stat(
-              "sla_next_6h",
-              "Próximas 6 h",
-              block.sla_next_6h,
-              block.sla_next_6h > 0 ? (
-                <StatusBadge tone="warning">em 6 h</StatusBadge>
-              ) : null,
-            )}
-            {stat(
-              "sla_missing",
-              "Sem prazo",
-              block.sla_missing,
-              null,
-              `${coverage.opportunities_with_sla} de ${coverage.opportunities} abertas com prazo definido`,
-            )}
-            {stat(
-              "without_owner",
-              "Sem responsável",
-              block.without_owner,
-              null,
-              `${coverage.opportunities_with_owner} de ${coverage.opportunities} com responsável`,
-            )}
-            {stat(
-              "awaiting_decision",
-              "Aguardando decisão",
-              block.awaiting_decision,
-            )}
-            <div className="cc-stat">
+            <div className="cc-stat cc-stat-value">
               <dt>
                 <MetricLabel
                   k="value_at_risk"
@@ -544,25 +577,69 @@ function NowBlock({
               )}
             </div>
           </dl>
-          <MetaRow
-            label="Proveniência do bloco Agora"
-            items={[
-              ["Período", "Retrato na data da consulta"],
-              [
-                "Fonte",
-                "ares_opportunities, deals, approval_requests, action_executions, connections",
-              ],
-              [
-                "Dado mais recente",
-                block.freshness_at
-                  ? dateTime(block.freshness_at)
-                  : "não informado",
-              ],
-              ["Atribuição", "Observação operacional"],
-            ]}
-          />
+          <details className="cc-secondary-details">
+            <summary>Ver indicadores de prazo, responsável e decisão</summary>
+            <dl>
+              {stat(
+                "sla_next_6h",
+                "Próximas 6 h",
+                block.sla_next_6h,
+                block.sla_next_6h > 0 ? (
+                  <StatusBadge tone="warning">em 6 h</StatusBadge>
+                ) : null,
+              )}
+              {stat(
+                "sla_missing",
+                "Sem prazo",
+                block.sla_missing,
+                null,
+                `${coverage.opportunities_with_sla} de ${coverage.opportunities} abertas com prazo definido`,
+              )}
+              {stat(
+                "without_owner",
+                "Sem responsável",
+                block.without_owner,
+                null,
+                `${coverage.opportunities_with_owner} de ${coverage.opportunities} com responsável`,
+              )}
+              {stat(
+                "awaiting_decision",
+                "Aguardando decisão",
+                block.awaiting_decision,
+              )}
+            </dl>
+            <MetaRow
+              label="Proveniência do bloco Agora"
+              items={[
+                ["Período", "Retrato na data da consulta"],
+                [
+                  "Fonte",
+                  "ares_opportunities, deals, approval_requests, action_executions, connections",
+                ],
+                [
+                  "Dado mais recente",
+                  block.freshness_at
+                    ? dateTime(block.freshness_at)
+                    : "não informado",
+                ],
+                ["Atribuição", "Observação operacional"],
+              ]}
+            />
+          </details>
         </div>
         <div className="cc-now-main">
+          <div className="cc-queue-head">
+            <div>
+              <h3>Fila prioritária</h3>
+              <p>
+                Negócios abertos ordenados por prioridade e prazo. Abra um caso
+                para agir.
+              </p>
+            </div>
+            <span>
+              Mostrando {visibleQueue.length} de {block.queue.length}
+            </span>
+          </div>
           {block.queue.length === 0 ? (
             <p className="data-empty">
               {data.scope.mode === "own" && block.open_at_risk === 0
@@ -598,15 +675,15 @@ function NowBlock({
                   </tr>
                 </thead>
                 <tbody>
-                  {block.queue.map((item) => (
+                  {visibleQueue.map((item) => (
                     <tr key={item.opportunity_id}>
-                      <td>
+                      <td data-label="Prioridade">
                         <span className={`priority-pill p${item.priority}`}>
                           {priorityLabels[item.priority] ??
                             `Prioridade ${item.priority}`}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Negócio">
                         <div className="cell-stack">
                           <Link to={`/opportunities/${item.opportunity_id}`}>
                             {item.title ?? "Sem negócio vinculado"}
@@ -621,13 +698,13 @@ function NowBlock({
                           </small>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Score">
                         <ScoreBar score={item.score ?? ""} breakdown={{}} />
                       </td>
-                      <td>
+                      <td data-label="SLA">
                         <SlaCountdown timestamp={item.sla_at} />
                       </td>
-                      <td className="is-numeric">
+                      <td className="is-numeric" data-label="Valor">
                         {item.deal_value === null ? (
                           <span className="cell-muted">
                             Valor não informado
@@ -636,7 +713,7 @@ function NowBlock({
                           money(item.deal_value, item.currency ?? "BRL")
                         )}
                       </td>
-                      <td>
+                      <td data-label="Responsável">
                         {item.owner_user_id ? (
                           <span className="cell-mono">
                             {shortId(item.owner_user_id)}
@@ -645,7 +722,7 @@ function NowBlock({
                           <span className="cell-muted">Sem responsável</span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Ações">
                         <div className="cell-actions">
                           <Button asChild size="sm" variant="outline">
                             <Link to={`/opportunities/${item.opportunity_id}`}>
@@ -675,138 +752,166 @@ function NowBlock({
               </table>
             </div>
           )}
-          <div className="cc-now-lists">
-            <div className="cc-list">
-              <h3>
-                Aprovações pendentes ({block.approvals.pending})
-                {block.approvals.expiring_within_6h > 0 ? (
-                  <StatusBadge tone="warning">expira em breve</StatusBadge>
-                ) : null}
-              </h3>
-              <small className="cc-list-note">
-                {block.approvals.expiring_within_6h} expirando em 6 h
-              </small>
-              {block.approvals.items.length === 0 ? (
-                <p className="panel-note">
-                  Nenhuma aprovação pendente. Novas recomendações que exigem
-                  decisão humana aparecem aqui.
-                </p>
-              ) : (
-                <ul>
-                  {block.approvals.items.map((item) => {
-                    const expiry = relative(item.expires_at, now);
-                    const tone: Tone =
-                      item.urgency === "critical"
-                        ? "critical"
-                        : item.urgency === "high"
-                          ? "warning"
-                          : "neutral";
-                    return (
-                      <li key={item.approval_id}>
-                        <Link to={`/opportunities/${item.opportunity_id}`}>
-                          {item.title ?? "Sem negócio vinculado"}
-                        </Link>
-                        <StatusBadge tone={tone}>
-                          {label(urgencyLabels, item.urgency) ?? "Sem urgência"}
-                        </StatusBadge>
-                        <span className="cell-muted">
-                          {expiry
-                            ? expiry.past
-                              ? `expirada há ${expiry.text}`
-                              : `expira em ${expiry.text}`
-                            : "sem expiração"}{" "}
-                          · exige{" "}
-                          {roleWords[item.required_role] ?? item.required_role}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <div className="form-actions">
-                {canApprove ? (
-                  <Button asChild size="sm">
-                    <Link to="/approvals">Aprovar em Aprovações</Link>
-                  </Button>
-                ) : (
-                  <Button size="sm" disabled title={approveDisabledTitle}>
-                    Aprovar
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled
-                  title={assignTitle}
-                >
-                  Assumir
-                </Button>
-              </div>
-              <small className="cc-list-note">{assignTitle}</small>
-            </div>
-            <div className="cc-list">
-              <h3>Ações falhas e integrações</h3>
-              {block.failed_actions.count === 0 &&
-              degradedItems(block).length === 0 ? (
-                <p className="panel-note">
-                  Nenhuma falha registrada no período e todas as conexões estão
-                  saudáveis ou configuradas. Zero falhas não comprova sucesso
-                  das ações.
-                </p>
-              ) : (
-                <ul>
-                  {block.failed_actions.items.map((item) => (
-                    <li key={item.execution_id}>
-                      <StatusBadge tone="critical">
-                        {label(actionKindLabels, item.action_kind) ?? "Ação"}
-                      </StatusBadge>
-                      <span>
-                        {item.attempts} tentativa
-                        {item.attempts === 1 ? "" : "s"}
-                      </span>
-                      {item.finished_at ? (
-                        <time dateTime={item.finished_at}>
-                          {dateTime(item.finished_at)}
-                        </time>
-                      ) : null}
-                      <span className="cell-mono">
-                        {shortId(item.correlation_id)}
-                      </span>
-                      <Link to={`/opportunities/${item.opportunity_id}`}>
-                        Abrir oportunidade
-                      </Link>
-                    </li>
-                  ))}
-                  {degradedItems(block).map((item) => {
-                    const sync = relative(item.last_sync_at, now);
-                    return (
-                      <li key={item.connection_id}>
-                        <strong>{item.provider}</strong>
-                        <StatusBadge tone="critical">
-                          {connectionStatusLabels[item.status] ?? item.status}
-                        </StatusBadge>
-                        <span className="cell-muted">
-                          {sync
-                            ? `última sincronização há ${sync.text}`
-                            : "nunca sincronizou"}
-                        </span>
-                        <FixConnection
-                          enabled={data.capabilities.fix_connection}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              {block.failed_actions.count >
-              block.failed_actions.items.length ? (
+          {block.queue.length > 5 ? (
+            <Button
+              className="cc-queue-more"
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-expanded={showAllQueue}
+              onClick={() => setShowAllQueue((current) => !current)}
+            >
+              {showAllQueue
+                ? "Mostrar menos"
+                : `Mostrar mais ${block.queue.length - 5} negócios`}
+            </Button>
+          ) : null}
+          <details className="cc-work-details">
+            <summary>
+              Aprovações e integrações
+              <span>
+                {block.approvals.pending} aprovações ·{" "}
+                {block.failed_actions.count} falhas
+                {degradedItems(block).length
+                  ? ` · ${degradedItems(block).length} conexões`
+                  : ""}
+              </span>
+            </summary>
+            <div className="cc-now-lists">
+              <div className="cc-list">
+                <h3>
+                  Aprovações pendentes ({block.approvals.pending})
+                  {block.approvals.expiring_within_6h > 0 ? (
+                    <StatusBadge tone="warning">expira em breve</StatusBadge>
+                  ) : null}
+                </h3>
                 <small className="cc-list-note">
-                  Mostrando {block.failed_actions.items.length} de{" "}
-                  {block.failed_actions.count} falhas no período.
+                  {block.approvals.expiring_within_6h} expirando em 6 h
                 </small>
-              ) : null}
+                {block.approvals.items.length === 0 ? (
+                  <p className="panel-note">
+                    Nenhuma aprovação pendente. Novas recomendações que exigem
+                    decisão humana aparecem aqui.
+                  </p>
+                ) : (
+                  <ul>
+                    {block.approvals.items.map((item) => {
+                      const expiry = relative(item.expires_at, now);
+                      const tone: Tone =
+                        item.urgency === "critical"
+                          ? "critical"
+                          : item.urgency === "high"
+                            ? "warning"
+                            : "neutral";
+                      return (
+                        <li key={item.approval_id}>
+                          <Link to={`/opportunities/${item.opportunity_id}`}>
+                            {item.title ?? "Sem negócio vinculado"}
+                          </Link>
+                          <StatusBadge tone={tone}>
+                            {label(urgencyLabels, item.urgency) ??
+                              "Sem urgência"}
+                          </StatusBadge>
+                          <span className="cell-muted">
+                            {expiry
+                              ? expiry.past
+                                ? `expirada há ${expiry.text}`
+                                : `expira em ${expiry.text}`
+                              : "sem expiração"}{" "}
+                            · exige{" "}
+                            {roleWords[item.required_role] ??
+                              item.required_role}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <div className="form-actions">
+                  {canApprove ? (
+                    <Button asChild size="sm">
+                      <Link to="/approvals">Aprovar em Aprovações</Link>
+                    </Button>
+                  ) : (
+                    <Button size="sm" disabled title={approveDisabledTitle}>
+                      Aprovar
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled
+                    title={assignTitle}
+                  >
+                    Assumir
+                  </Button>
+                </div>
+                <small className="cc-list-note">{assignTitle}</small>
+              </div>
+              <div className="cc-list">
+                <h3>Ações falhas e integrações</h3>
+                {block.failed_actions.count === 0 &&
+                degradedItems(block).length === 0 ? (
+                  <p className="panel-note">
+                    Nenhuma falha registrada no período e todas as conexões
+                    estão saudáveis ou configuradas. Zero falhas não comprova
+                    sucesso das ações.
+                  </p>
+                ) : (
+                  <ul>
+                    {block.failed_actions.items.map((item) => (
+                      <li key={item.execution_id}>
+                        <StatusBadge tone="critical">
+                          {label(actionKindLabels, item.action_kind) ?? "Ação"}
+                        </StatusBadge>
+                        <span>
+                          {item.attempts} tentativa
+                          {item.attempts === 1 ? "" : "s"}
+                        </span>
+                        {item.finished_at ? (
+                          <time dateTime={item.finished_at}>
+                            {dateTime(item.finished_at)}
+                          </time>
+                        ) : null}
+                        <span className="cell-mono">
+                          {shortId(item.correlation_id)}
+                        </span>
+                        <Link to={`/opportunities/${item.opportunity_id}`}>
+                          Abrir oportunidade
+                        </Link>
+                      </li>
+                    ))}
+                    {degradedItems(block).map((item) => {
+                      const sync = relative(item.last_sync_at, now);
+                      return (
+                        <li key={item.connection_id}>
+                          <strong>{item.provider}</strong>
+                          <StatusBadge tone="critical">
+                            {connectionStatusLabels[item.status] ?? item.status}
+                          </StatusBadge>
+                          <span className="cell-muted">
+                            {sync
+                              ? `última sincronização há ${sync.text}`
+                              : "nunca sincronizou"}
+                          </span>
+                          <FixConnection
+                            enabled={data.capabilities.fix_connection}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {block.failed_actions.count >
+                block.failed_actions.items.length ? (
+                  <small className="cc-list-note">
+                    Mostrando {block.failed_actions.items.length} de{" "}
+                    {block.failed_actions.count} falhas no período.
+                  </small>
+                ) : null}
+              </div>
             </div>
-          </div>
+          </details>
         </div>
       </div>
     </section>
@@ -1073,6 +1178,8 @@ function ActivityBlock({
   now: number;
 }) {
   const activity = data.activity;
+  const [showAll, setShowAll] = useState(false);
+  const visibleItems = showAll ? activity.items : activity.items.slice(0, 5);
   void now;
   return (
     <section className="panel cc-activity" aria-labelledby="cc-activity-h">
@@ -1092,7 +1199,7 @@ function ActivityBlock({
         </p>
       ) : (
         <ol className="event-trail">
-          {activity.items.map((item, index) => (
+          {visibleItems.map((item, index) => (
             <li
               className="event-trail-item"
               key={`${item.kind}-${item.correlation_id}-${index}`}
@@ -1136,11 +1243,26 @@ function ActivityBlock({
           ))}
         </ol>
       )}
+      {activity.items.length > 5 ? (
+        <div className="cc-activity-more">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-expanded={showAll}
+            onClick={() => setShowAll((current) => !current)}
+          >
+            {showAll
+              ? "Mostrar menos eventos"
+              : `Mostrar mais ${activity.items.length - 5} eventos`}
+          </Button>
+        </div>
+      ) : null}
       <footer className="panel-footer">
         <span>
           {activity.truncated
-            ? `Mostrando os ${activity.limit} mais recentes`
-            : `${activity.items.length} evento${activity.items.length === 1 ? "" : "s"} no período`}
+            ? `Mostrando ${visibleItems.length} dos ${activity.limit} mais recentes`
+            : `Mostrando ${visibleItems.length} de ${activity.items.length} evento${activity.items.length === 1 ? "" : "s"} no período`}
         </span>
         <span className="pager">
           <Button asChild size="sm" variant="outline">
@@ -1155,89 +1277,115 @@ function ActivityBlock({
 
 /* ---------------------------------------------------------- Definições --- */
 
-function DefinitionsBlock({ data }: { data: CommandCenterSummary }) {
+function DefinitionsBlock({
+  data,
+  expanded,
+  onToggle,
+}: {
+  data: CommandCenterSummary;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const coverage = data.coverage;
   return (
     <section className="panel cc-definitions" aria-labelledby="cc-def-h">
       <div className="panel-heading">
         <div>
           <h2 id="cc-def-h">Definições e limitações</h2>
-          <p>
-            Nenhum número aparece sem definição; a fórmula vem do serviço, não
-            da tela.
-          </p>
+          <p>Fórmulas, fontes e limites do cálculo retornados pelo serviço.</p>
+        </div>
+        <div className="panel-aside">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-expanded={expanded}
+            aria-controls="cc-definitions-content"
+            onClick={onToggle}
+          >
+            {expanded ? "Ocultar critérios" : "Ver critérios e fórmulas"}
+          </Button>
         </div>
       </div>
-      <div className="panel-body">
-        <ul className="definition-list">
-          {data.definitions.map((definition) => (
-            <li id={`def-${definition.key}`} key={definition.key} tabIndex={-1}>
-              <strong>{definition.label}</strong>{" "}
-              {definition.attribution_level ? (
-                <StatusBadge tone="neutral">
-                  {attributionLabels[definition.attribution_level] ??
-                    definition.attribution_level}
-                </StatusBadge>
-              ) : null}{" "}
-              — {definition.formula}{" "}
-              <span className="cell-muted">
-                Fonte: {definition.tables.join(", ")} · Período:{" "}
-                {definition.period} · Atribuição: {definition.attribution}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <h3>Impacto ARES (texto do serviço)</h3>
-        <ul className="definition-list">
-          {data.impact.definitions.map((text) => (
-            <li key={text}>{text}</li>
-          ))}
-        </ul>
-        <h3>Limitações desta leitura</h3>
-        <ul className="definition-list">
-          <li>
-            {coverage.opportunities_with_owner} de {coverage.opportunities}{" "}
-            oportunidades abertas com responsável definido.
-          </li>
-          <li>
-            {coverage.deals_with_value} de {coverage.opportunities} com valor de
-            negócio informado.
-          </li>
-          {coverage.ai_runs !== null ? (
+      {expanded ? (
+        <div className="panel-body" id="cc-definitions-content">
+          <ul className="definition-list">
+            {data.definitions.map((definition) => (
+              <li
+                id={`def-${definition.key}`}
+                key={definition.key}
+                tabIndex={-1}
+              >
+                <strong>{definition.label}</strong>{" "}
+                {definition.attribution_level ? (
+                  <StatusBadge tone="neutral">
+                    {attributionLabels[definition.attribution_level] ??
+                      definition.attribution_level}
+                  </StatusBadge>
+                ) : null}{" "}
+                — {definition.formula}{" "}
+                <span className="cell-muted">
+                  Fonte: {definition.tables.join(", ")} · Período:{" "}
+                  {definition.period} · Atribuição: {definition.attribution}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <h3>Impacto ARES (texto do serviço)</h3>
+          <ul className="definition-list">
+            {data.impact.definitions.map((text) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+          <h3>Limitações desta leitura</h3>
+          <ul className="definition-list">
             <li>
-              {coverage.ai_measured_runs} de {coverage.ai_runs} execuções com
-              custo medido.
+              {coverage.opportunities_with_owner} de {coverage.opportunities}{" "}
+              oportunidades abertas com responsável definido.
             </li>
-          ) : null}
-          <li>Horários agregados em UTC; não há fuso por tenant.</li>
-          <li>
-            Nenhuma meta ou alvo é exibido: o documento-fonte não define metas
-            comerciais.
-          </li>
-          <li>
-            Aprovar e assumir acontecem nas telas de Aprovações/Oportunidade;
-            este painel não executa mutações e "Assumir" ainda não tem endpoint.
-          </li>
-          <li>
-            Influência não é causalidade; incremental só existe com
-            attribution_level = incremental_proven e método registrado.
-          </li>
-        </ul>
-        <h3>O que este painel não mostra</h3>
-        <ul className="definition-list">
-          <li>
-            Metas e bullet charts: o documento-fonte não define alvos
-            comerciais.
-          </li>
-          <li>
-            Ranking de equipe: não há dado que sustente a comparação com
-            honestidade.
-          </li>
-          <li>Funil de etapas do CRM: ver Radar › Exposição por etapa.</li>
-          <li>Totais entre moedas: cada moeda é apresentada separadamente.</li>
-          <li>Grafo relacional e memória semântica: fora deste recorte.</li>
-        </ul>
-      </div>
+            <li>
+              {coverage.deals_with_value} de {coverage.opportunities} com valor
+              de negócio informado.
+            </li>
+            {coverage.ai_runs !== null ? (
+              <li>
+                {coverage.ai_measured_runs} de {coverage.ai_runs} execuções com
+                custo medido.
+              </li>
+            ) : null}
+            <li>Horários agregados em UTC; não há fuso por tenant.</li>
+            <li>
+              Nenhuma meta ou alvo é exibido: o documento-fonte não define metas
+              comerciais.
+            </li>
+            <li>
+              Aprovar e assumir acontecem nas telas de Aprovações/Oportunidade;
+              este painel não executa mutações e "Assumir" ainda não tem
+              endpoint.
+            </li>
+            <li>
+              Influência não é causalidade; incremental só existe com
+              attribution_level = incremental_proven e método registrado.
+            </li>
+          </ul>
+          <h3>O que este painel não mostra</h3>
+          <ul className="definition-list">
+            <li>
+              Metas e bullet charts: o documento-fonte não define alvos
+              comerciais.
+            </li>
+            <li>
+              Ranking de equipe: não há dado que sustente a comparação com
+              honestidade.
+            </li>
+            <li>Funil de etapas do CRM: ver Radar › Exposição por etapa.</li>
+            <li>
+              Totais entre moedas: cada moeda é apresentada separadamente.
+            </li>
+            <li>Grafo relacional e memória semântica: fora deste recorte.</li>
+          </ul>
+        </div>
+      ) : null}
       <footer className="panel-footer">
         <span>{data.source}</span>
         <span>Consulta em {dateTime(data.computed_at)}</span>

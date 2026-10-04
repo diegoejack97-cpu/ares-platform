@@ -15,12 +15,14 @@ import {
   MoonIcon,
   ListIcon,
   ShieldCheckIcon,
+  ShieldWarningIcon,
   SidebarSimpleIcon,
   SignOutIcon,
   SunIcon,
   CrosshairIcon,
   KanbanIcon,
   CpuIcon,
+  UsersThreeIcon,
 } from "@phosphor-icons/react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +32,8 @@ import { useLiveClock } from "@/lib/live-clock";
 import { AresMark } from "@/components/ares-mark";
 import { BillingNotice } from "@/features/provider/BillingNotice";
 import { LicensePage, QuotaNotice } from "@/features/provider/LicensePage";
+import { account } from "@/features/provider/account-api";
+import { NotificationBell } from "@/features/sentinels/NotificationBell";
 const LeadsPage = lazy(() =>
   import("@/features/leads/LeadsPage").then((module) => ({
     default: module.LeadsPage,
@@ -67,6 +71,11 @@ const PipelinePage = lazy(() =>
 const AgentsPage = lazy(() =>
   import("@/features/agents/AgentsPage").then((module) => ({
     default: module.AgentsPage,
+  })),
+);
+const SentinelsPage = lazy(() =>
+  import("@/features/sentinels/SentinelsPage").then((module) => ({
+    default: module.SentinelsPage,
   })),
 );
 const ChatPage = lazy(() =>
@@ -109,6 +118,22 @@ function App() {
     queryFn: getApprovals,
     refetchInterval: 15_000,
   });
+  const accountRole = useQuery({
+    queryKey: [
+      "account-role",
+      session.user.id,
+      session.user.app_metadata?.active_tenant_id,
+    ],
+    queryFn: () => account<{ role: string; company_name: string }>("/me"),
+    retry: false,
+  });
+  const companyName = accountRole.data?.company_name ?? "Sua empresa";
+  const companyMonogram = companyName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0] ?? "")
+    .join("")
+    .toUpperCase();
   const overdueCount =
     radar.data?.items.filter(
       (item) => item.sla_at && Date.parse(item.sla_at) <= now,
@@ -124,18 +149,23 @@ function App() {
     }
   }, [theme]);
 
-  useEffect(() => {
-    const query = window.matchMedia?.("(max-width: 600px)");
-    if (!query) return;
-    const sync = (event: MediaQueryListEvent) => setCompact(event.matches);
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
     setSidebarFocused(false);
+    if (sidebarRef.current?.contains(document.activeElement))
+      (document.activeElement as HTMLElement).blur();
   }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 600px)");
+    if (!query) return;
+    const sync = (event: MediaQueryListEvent) => {
+      if (event.matches) closeMenu();
+      setCompact(event.matches);
+    };
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, [closeMenu]);
 
   useEffect(() => {
     // The pushed rail is part of the layout, so only the overlay drawer is dismissed by clicking away.
@@ -146,8 +176,6 @@ function App() {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       closeMenu();
-      if (sidebarRef.current?.contains(document.activeElement))
-        (document.activeElement as HTMLElement)?.blur();
     };
     document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -212,7 +240,17 @@ function App() {
           <span>CONNECT</span>
           <span>01</span>
         </div>
-        <nav aria-label="Navegação principal">
+        <nav
+          aria-label="Navegação principal"
+          onClick={(event) => {
+            if (
+              compact &&
+              event.target instanceof Element &&
+              event.target.closest("a")
+            )
+              closeMenu();
+          }}
+        >
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
             to="/radar"
@@ -277,6 +315,14 @@ function App() {
           </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            to="/sentinels"
+            title="Sentinelas"
+          >
+            <ShieldWarningIcon aria-hidden />
+            <span className="nav-copy">Sentinelas</span>
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
             to="/chat"
             title="Chat ARES"
           >
@@ -291,14 +337,18 @@ function App() {
             <GaugeIcon aria-hidden />
             <span className="nav-copy">Command Center</span>
           </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
-            to="/licenses"
-            title="Licenças"
-          >
-            <CrosshairIcon aria-hidden />
-            <span className="nav-copy">Licenças</span>
-          </NavLink>
+          {accountRole.data?.role === "admin" ? (
+            <NavLink
+              className={({ isActive }) =>
+                `nav-item${isActive ? " active" : ""}`
+              }
+              to="/licenses"
+              title="Usuários e licenças"
+            >
+              <UsersThreeIcon aria-hidden />
+              <span className="nav-copy">Usuários e licenças</span>
+            </NavLink>
+          ) : null}
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
             to="/leads"
@@ -341,12 +391,13 @@ function App() {
             <ListIcon aria-hidden />
           </button>
           <span className="tenant-name">
-            <span className="tenant-monogram">SM</span>Serra Metais
-            Distribuidora
+            <span className="tenant-monogram">{companyMonogram}</span>
+            {companyName}
           </span>
           <span className="environment-label">AMBIENTE LOCAL</span>
           <span className="topbar-separator" />
           <strong>{session.user.email}</strong>
+          <NotificationBell />
           <button
             className="theme-toggle"
             type="button"
@@ -389,7 +440,20 @@ function App() {
               </Suspense>
             }
           />
-          <Route path="/licenses" element={<LicensePage />} />
+          <Route
+            path="/licenses"
+            element={
+              accountRole.isPending ? (
+                <main className="workspace route-loading" aria-busy="true">
+                  Verificando acesso à administração da empresa…
+                </main>
+              ) : accountRole.data?.role === "admin" ? (
+                <LicensePage />
+              ) : (
+                <Navigate to="/radar" replace />
+              )
+            }
+          />
           <Route
             path="/leads"
             element={
@@ -442,6 +506,20 @@ function App() {
                 }
               >
                 <AgentsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/sentinels"
+            element={
+              <Suspense
+                fallback={
+                  <main className="workspace route-loading" role="status">
+                    Carregando sentinelas…
+                  </main>
+                }
+              >
+                <SentinelsPage />
               </Suspense>
             }
           />

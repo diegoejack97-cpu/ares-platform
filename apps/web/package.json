@@ -16,6 +16,7 @@
     "test:e2e:live": "node scripts/verify-live-data.cjs",
     "test:e2e:m6": "node scripts/verify-m6-live.cjs",
     "test:e2e:m6:provider": "node scripts/verify-m6-provider.cjs",
+    "test:e2e:central-admin": "node scripts/verify-central-admin.cjs",
     "test:e2e:command-center": "node scripts/verify-command-center.cjs",
     "preview": "vite preview"
   },
@@ -42,7 +43,9 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-hook-form": "7.86.0",
+    "react-markdown": "10.1.0",
     "react-router-dom": "7.18.3",
+    "remark-gfm": "4.0.1",
     "shadcn": "4.19.0",
     "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.3",

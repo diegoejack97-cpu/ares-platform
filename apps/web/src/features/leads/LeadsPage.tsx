@@ -23,10 +23,7 @@ const schema = z
     path: ["phone"],
   });
 
-const leadStatus: Record<
-  string,
-  { tone: Tone | "accent"; label: string }
-> = {
+const leadStatus: Record<string, { tone: Tone | "accent"; label: string }> = {
   pending: { tone: "warning", label: "Pendente" },
   creating: { tone: "info", label: "Criando no CRM" },
   created: { tone: "good", label: "Criado no CRM" },

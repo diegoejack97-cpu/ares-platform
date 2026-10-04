@@ -21,9 +21,12 @@ from ares.decision.service import DecisionConflict, DecisionService
 from ares.event_journal.models import IncomingCRMEvent
 from ares.event_journal.service import PostgresEventJournal
 from ares.intelligence.service import IntelligenceService
+from ares.workers.tick import TickResult, TickWorker
 
 DATABASE_URL = os.getenv("ARES_TEST_DATABASE_URL")
 TENANT_ID = UUID("20000000-0000-0000-0000-000000000001")
+ADMIN_ID = "10000000-0000-0000-0000-000000000001"
+MANAGER_ID = "10000000-0000-0000-0000-000000000003"
 
 
 @pytest.mark.integration
@@ -60,7 +63,24 @@ def test_m3_auditable_human_approved_idempotent_action_chain() -> None:
     pipeline = intelligence.process_event_sync(accepted.event_id)
     assert pipeline.opportunity_id is not None
 
-    created = decision.create_recommendation_sync(pipeline.opportunity_id)
+    with psycopg.connect(DATABASE_URL) as connection:
+        prior_slots = connection.execute(
+            "select agent_slots from public.tenant_quotas where tenant_id=%s", (TENANT_ID,)
+        ).fetchone()[0]
+        connection.execute(
+            "update public.tenant_quotas set agent_slots=0 where tenant_id=%s", (TENANT_ID,)
+        )
+    try:
+        with pytest.raises(DecisionConflict, match="agent_capacity_disabled"):
+            decision.create_recommendation_sync(pipeline.opportunity_id, ADMIN_ID)
+    finally:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                "update public.tenant_quotas set agent_slots=%s where tenant_id=%s",
+                (prior_slots, TENANT_ID),
+            )
+
+    created = decision.create_recommendation_sync(pipeline.opportunity_id, ADMIN_ID)
     recommendation = decision._get_recommendation_sync(created["recommendation_id"])
     assert recommendation is not None
     assert recommendation["policy_verdict"] == "require_approval"
@@ -70,14 +90,14 @@ def test_m3_auditable_human_approved_idempotent_action_chain() -> None:
     approved = decision.decide_sync(
         created["recommendation_id"],
         DecideCommand(verdict="approved", expected_version=created["version"]),
-        "test-manager",
+        MANAGER_ID,
     )
     assert approved["intent_id"] is not None
     with pytest.raises(DecisionConflict) as conflict:
         decision.decide_sync(
             created["recommendation_id"],
             DecideCommand(verdict="approved", expected_version=created["version"]),
-            "second-manager",
+            ADMIN_ID,
         )
     assert conflict.value.code == "stale_recommendation"
 
@@ -169,7 +189,7 @@ def test_m3_policy_allow_authorizes_low_risk_action_without_dead_end(
     )
     monkeypatch.setattr(decision._models, "generate", lambda *_args: generated)
 
-    created = decision.create_recommendation_sync(pipeline.opportunity_id)
+    created = decision.create_recommendation_sync(pipeline.opportunity_id, ADMIN_ID)
     assert created["status"] == "authorized"
     assert created["intent_id"] is not None
     executed = decision.execute_intent_sync(created["intent_id"])
@@ -197,7 +217,9 @@ def test_m3_policy_allow_authorizes_low_risk_action_without_dead_end(
 
 @pytest.mark.integration
 @pytest.mark.skipif(DATABASE_URL is None, reason="local Supabase database is not configured")
-def test_m3_http_contract_returns_409_and_executes_via_background_worker() -> None:
+def test_m3_http_contract_returns_409_and_executes_via_background_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert DATABASE_URL is not None
     now = datetime.now(UTC)
     journal = PostgresEventJournal(DATABASE_URL, TENANT_ID)
@@ -224,11 +246,12 @@ def test_m3_http_contract_returns_409_and_executes_via_background_worker() -> No
     pipeline = intelligence.process_event_sync(accepted.event_id)
     assert pipeline.opportunity_id is not None
 
-    app.dependency_overrides[require_user] = lambda: AuthenticatedUser(
-        user_id=UUID("10000000-0000-0000-0000-000000000001"),
-        tenant_id=TENANT_ID,
-        email="admin@ares.local",
-        role="admin",
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        require_user,
+        lambda: AuthenticatedUser(
+            user_id=UUID(ADMIN_ID), tenant_id=TENANT_ID, email="admin@ares.local", role="admin"
+        ),
     )
     client = TestClient(app)
     created = client.post(
@@ -244,6 +267,26 @@ def test_m3_http_contract_returns_409_and_executes_via_background_worker() -> No
     assert stale.status_code == 409
     assert stale.json()["detail"]["code"] == "stale_recommendation"
 
+    # The HTTP background task uses the real durable claim/execute implementation.
+    # Bound its batch by this isolated database's pending actions, so unrelated
+    # projection jobs from earlier tests cannot starve this newly approved intent.
+    with psycopg.connect(DATABASE_URL) as connection:
+        queue_count = connection.execute(
+            "select count(*) from public.jobs where kind='action.execute' and status='queued'"
+        ).fetchone()
+    assert queue_count is not None
+    actual_tick = TickWorker.run_once
+
+    def drain_actions(worker: TickWorker) -> TickResult:
+        return actual_tick(
+            worker,
+            batch_size=queue_count[0] + 1,
+            job_kinds=["action.execute"],
+            scan_sentinels=False,
+        )
+
+    monkeypatch.setattr(TickWorker, "run_once", drain_actions)
+
     approved = client.post(
         f"/api/v1/recommendations/{rec['id']}/decide",
         json={"verdict": "approved", "expected_version": rec["version"]},
@@ -254,4 +297,3 @@ def test_m3_http_contract_returns_409_and_executes_via_background_worker() -> No
     assert action.json()["intent"]["status"] == "succeeded"
     assert action.json()["execution"]["executed_action"]["action_kind"] == "create_task"
     assert action.json()["execution"]["target"]["resolved_from"] == rec["context_ref"]
-    app.dependency_overrides.clear()

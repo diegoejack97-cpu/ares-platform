@@ -4,6 +4,9 @@ import type {
   BillingCommand,
   QuotaCommand,
   SetEntitlement,
+  SetInitialAdmin,
+  SetPackage,
+  SetTenantStatus,
   TenantConfiguration,
   TenantPage,
   TenantRecord,
@@ -21,6 +24,25 @@ export const providerAuth = createClient(
   },
 );
 
+const providerMessages: Record<string, string> = {
+  funnel_migration_required:
+    "A troca de dono do funil exige migração assistida.",
+  company_activation_requires_plan:
+    "Atribua um plano vigente antes de liberar a empresa.",
+  company_activation_requires_quota:
+    "Configure as licenças e cotas antes de liberar a empresa.",
+  company_activation_requires_billing:
+    "Defina a cobrança como adimplente antes de liberar a empresa.",
+  company_activation_requires_admin:
+    "Indique um administrador inicial antes de liberar a empresa.",
+  initial_admin_already_assigned:
+    "A empresa já tem usuários. A administração agora é feita em Licenças.",
+  initial_admin_requires_seat:
+    "Configure ao menos uma licença antes de indicar o administrador.",
+  verified_initial_admin_required:
+    "Use o e-mail de uma conta existente, verificada e sem vínculo com o provedor.",
+};
+
 export class ProviderError extends Error {
   status: number;
   correlationId?: string;
@@ -28,11 +50,10 @@ export class ProviderError extends Error {
     super(
       status === 401 || status === 403
         ? "Esta conta não tem acesso de provedor. Use a conta dedicada."
-        : code === "funnel_migration_required"
-          ? "A troca de dono do funil exige migração assistida."
-          : status === 409
-            ? "A configuração mudou ou conflita com outro registro. Recarregue antes de salvar."
-            : "Não foi possível concluir a operação. Tente novamente.",
+        : (providerMessages[code] ??
+            (status === 409
+              ? "A configuração mudou ou conflita com outro registro. Recarregue antes de salvar."
+              : "Não foi possível concluir a operação. Tente novamente.")),
     );
     this.status = status;
     this.correlationId = correlationId;
@@ -73,12 +94,19 @@ export const listTenants = (cursor: string | null, signal?: AbortSignal) =>
     undefined,
     signal,
   );
+export const providerIdentity = () => request<{ role: "provider" }>("/me");
 export const tenantConfiguration = (id: string, signal?: AbortSignal) =>
   request<TenantConfiguration>(`/tenants/${id}`, undefined, signal);
 export const createTenant = (command: CreateTenant) =>
   request<TenantRecord>("/tenants", command);
 export const setEntitlement = (id: string, command: SetEntitlement) =>
   request<TenantRecord>(`/tenants/${id}/entitlements`, command);
+export const setPackage = (id: string, command: SetPackage) =>
+  request<TenantRecord>(`/tenants/${id}/package`, command);
+export const setTenantStatus = (id: string, command: SetTenantStatus) =>
+  request<TenantRecord>(`/tenants/${id}/status`, command);
+export const setInitialAdmin = (id: string, command: SetInitialAdmin) =>
+  request<TenantRecord>(`/tenants/${id}/initial-admin`, command);
 export const setBilling = (id: string, command: BillingCommand) =>
   request<TenantRecord>(`/tenants/${id}/billing`, command);
 export const setQuota = (id: string, command: QuotaCommand) =>

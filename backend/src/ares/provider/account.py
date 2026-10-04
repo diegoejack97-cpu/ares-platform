@@ -36,6 +36,22 @@ def account_router(settings: Settings, require_user: Callable[..., Any]) -> APIR
         except psycopg.errors.RaiseException:
             raise HTTPException(409, detail={"code": "seat_limit_exceeded"}) from None
 
+    @router.get("/me")
+    def current_account(user: AuthenticatedUser = dependency) -> dict[str, str]:
+        """Expose the verified tenant role for navigation; authorization stays server-side."""
+        with psycopg.connect(settings.database_url, row_factory=dict_row) as db:
+            tenant = db.execute(
+                "select name from public.tenants where id=%s and status='active'",
+                (user.tenant_id,),
+            ).fetchone()
+        if tenant is None:
+            raise HTTPException(403, detail={"code": "tenant_inactive"})
+        return {
+            "tenant_id": str(user.tenant_id),
+            "company_name": str(tenant["name"]),
+            "role": user.role,
+        }
+
     @router.get("/licenses", response_model=LicensePage)
     def listing(
         invitation_cursor: UUID | None = None,

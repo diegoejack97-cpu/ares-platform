@@ -156,7 +156,37 @@ oito combinações de chat e dez de Agentes, temas claro/escuro e desktop/tablet
 sem overflow, erros JS ou violações axe detectadas. Teclado validado. No chat,
 contexto/GET reais; stream de apresentação controlado, sem chamada paga.
 
-## Aceite ainda aberto
+## Evolução do chat — solicitação de 26/09/2026
+
+A solicitação explícita do responsável pelo produto amplia o chat por oportunidade:
+o usuário conversa sem selecionar um registro previamente. A busca deve localizar
+oportunidades salvas no ARES e negócios acessíveis pelo adapter do CRM, preservando
+a distinção entre essas entidades. Os requisitos de identidade, fontes, acesso e
+movimento continuam os de [05 — UX/UI e Telas Detalhadas](https://app.notion.com/p/3c3e18aa7b0d81acb2dbf39cbbc334b9).
+
+Critérios deste recorte:
+
+- `scope_ref` opcional nos endpoints de histórico e envio; links contextuais
+  existentes continuam compatíveis, sem exigir seletor na tela.
+- Saudação simples recebe resposta curta, sem despejo de contexto comercial.
+- Perguntas comerciais consultam fontes autorizadas, com busca limitada no retorno,
+  origem explícita e indicação de fonte indisponível ou recorte parcial.
+- Se a busca não encontra evidências, o chat responde de forma determinística e
+  informa as limitações da consulta; não pede ao modelo que complete dados ausentes.
+- Respostas usam Markdown, listas e tabelas quando ajudam a leitura. `react-markdown`
+  e `remark-gfm` fazem a apresentação; pandas não é necessário para renderizar o chat.
+- Mensagem enviada aparece imediatamente. Um indicador de processamento acompanha
+  a requisição até conclusão ou falha e respeita `prefers-reduced-motion`.
+- Fontes e metadados ficam disponíveis por expansão. Texto parcial nunca é rotulado
+  como resposta concluída quando o stream termina com falha.
+- Autorização por tenant, membership/licença ativa, histórico privado, rastreabilidade
+  e proibição de escrita pelo chat permanecem obrigatórios.
+
+O único adapter HTTP implementado neste checkout é o FakeCRM de desenvolvimento.
+A busca pelo CRM real do cliente depende de adapter e credenciais homologados;
+o chat deve informar essa ausência, sem apresentar o sandbox como integração real.
+
+## Aceite ainda aberto (registro histórico de 14/09/2026)
 
 **Não há chave OpenAI configurada no ambiente local.** O chat informa a ausência e
 desabilita envio. O backend, persistência e consumo foram exercitados com provedor
@@ -168,3 +198,8 @@ A M5 não está encerrada. Permanecem validação real do provedor, revisão do 
 com dados homologados e aceite final. A cota atual é pré-voo; reserva concorrente
 de orçamento faz parte da evolução M6. Interrupções sem counters completos não
 permitem afirmar custo total, e continuam identificadas como uso indisponível.
+
+Esse registro descreve o ambiente de 14/09. Em 26/09, a configuração local foi
+reverificada: modelo `gpt-5.4`, chave presente somente no backend e API saudável.
+Isso não substitui os resultados de validação da evolução acima nem constitui
+homologação do CRM do cliente.

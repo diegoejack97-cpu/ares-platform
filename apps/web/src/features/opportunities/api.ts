@@ -6,6 +6,7 @@ import type {
   OpportunityAnalytics,
   OpportunityDetail,
   OpportunityPage,
+  SentinelPage,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -93,4 +94,8 @@ export function getApprovals(): Promise<ApprovalPage> {
 
 export function getOpportunityAnalytics(): Promise<OpportunityAnalytics> {
   return request("/api/v1/opportunities/analytics");
+}
+
+export function getSentinels(): Promise<SentinelPage> {
+  return request("/api/v1/sentinels");
 }

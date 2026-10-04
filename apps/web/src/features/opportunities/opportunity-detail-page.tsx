@@ -89,7 +89,7 @@ export function OpportunityDetailPage() {
   return (
     <main className="workspace detail-page">
       <Link className="back-link" to="/radar">
-        <ArrowLeftIcon aria-hidden /> Voltar ao Radar
+        <ArrowLeftIcon size={16} aria-hidden /> Voltar ao Radar
       </Link>
       {detail.isError ? (
         <div className="route-status" role="alert">
@@ -158,7 +158,7 @@ export function OpportunityDetailPage() {
                   determinísticas
                 </p>
               </div>
-              <ShieldCheckIcon aria-hidden />
+              <ShieldCheckIcon size={20} aria-hidden />
             </div>
             <div className="evidence-list">
               {evidence.map((item) => (
@@ -191,7 +191,7 @@ export function OpportunityDetailPage() {
                 <h2>Timeline auditável</h2>
                 <p>Transições com ator, fonte e evento de evidência</p>
               </div>
-              <ClockIcon aria-hidden />
+              <ClockIcon size={20} aria-hidden />
             </div>
             <ol className="timeline">
               {timeline.map((entry) => (
@@ -204,7 +204,7 @@ export function OpportunityDetailPage() {
                   }
                 >
                   <span>
-                    <CheckCircleIcon aria-hidden />
+                    <CheckCircleIcon size={16} aria-hidden />
                   </span>
                   <div>
                     <strong>
@@ -307,7 +307,7 @@ export function OpportunityDetailPage() {
                 <h2>Decisão e ação</h2>
                 <p>Recomendado não significa executado</p>
               </div>
-              <LightningIcon aria-hidden />
+              <LightningIcon size={20} aria-hidden />
             </div>
             {generate.isError || decide.isError ? (
               <div className="decision-error" role="alert">
@@ -329,14 +329,20 @@ export function OpportunityDetailPage() {
                   O ARES usa o snapshot auditável. Sem chave OpenAI, degrada
                   para regra determinística e mantém aprovação humana.
                 </p>
-                <Button
-                  type="button"
-                  disabled={generate.isPending}
-                  onClick={() => generate.mutate()}
-                >
-                  <LightningIcon aria-hidden />
-                  {generate.isPending ? "Gerando…" : "Gerar recomendação"}
-                </Button>
+                {detail.data.can_request_recommendation === true ? (
+                  <Button
+                    type="button"
+                    disabled={generate.isPending}
+                    onClick={() => generate.mutate()}
+                  >
+                    <LightningIcon aria-hidden />
+                    {generate.isPending ? "Gerando…" : "Gerar recomendação"}
+                  </Button>
+                ) : (
+                  <p>
+                    A geração de recomendações não está disponível neste acesso.
+                  </p>
+                )}
               </div>
             )}
           </section>

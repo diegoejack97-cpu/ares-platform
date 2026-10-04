@@ -15,6 +15,9 @@ from ares.provider.models import (
     CreateTenant,
     ProviderPrincipal,
     SetEntitlement,
+    SetInitialAdmin,
+    SetPackage,
+    SetTenantStatus,
     TenantConfiguration,
     TenantPage,
     TenantRecord,
@@ -78,6 +81,10 @@ def install_provider_api(app: FastAPI, settings: Settings) -> None:
         except psycopg.Error:
             raise ProviderHTTPError(503, "provider_operation_failed") from None
 
+    @router.get("/me")
+    def current_provider(actor: ProviderPrincipal = dependency) -> dict[str, str]:
+        return {"role": "provider", "user_id": str(actor.user_id)}
+
     @router.get("/tenants", response_model=TenantPage)
     def listing(
         cursor: UUID | None = None,
@@ -93,6 +100,22 @@ def install_provider_api(app: FastAPI, settings: Settings) -> None:
     @router.post("/tenants", response_model=TenantRecord, status_code=201)
     def create(command: CreateTenant, actor: ProviderPrincipal = dependency) -> Any:
         return execute(lambda: service.create(actor, command))
+
+    @router.post("/tenants/{tenant_id}/status", response_model=TenantRecord)
+    def tenant_status(
+        tenant_id: UUID, command: SetTenantStatus, actor: ProviderPrincipal = dependency
+    ) -> Any:
+        return execute(lambda: service.set_status(actor, tenant_id, command))
+
+    @router.post("/tenants/{tenant_id}/initial-admin", response_model=TenantRecord)
+    def initial_admin(
+        tenant_id: UUID, command: SetInitialAdmin, actor: ProviderPrincipal = dependency
+    ) -> Any:
+        return execute(lambda: service.assign_initial_admin(actor, tenant_id, command))
+
+    @router.post("/tenants/{tenant_id}/package", response_model=TenantRecord)
+    def package(tenant_id: UUID, command: SetPackage, actor: ProviderPrincipal = dependency) -> Any:
+        return execute(lambda: service.assign_package(actor, tenant_id, command))
 
     @router.post("/tenants/{tenant_id}/entitlements", response_model=TenantRecord)
     def entitle(

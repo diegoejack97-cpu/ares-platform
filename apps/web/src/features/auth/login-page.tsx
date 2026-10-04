@@ -7,8 +7,12 @@ import { supabase } from "@/lib/supabase";
 import { AresMark } from "@/components/ares-mark";
 
 export function LoginPage() {
-  const [email, setEmail] = useState("admin@ares.local");
-  const [password, setPassword] = useState("AresLocal!2026");
+  const [email, setEmail] = useState(
+    import.meta.env.DEV ? "admin@ares.local" : "",
+  );
+  const [password, setPassword] = useState(
+    import.meta.env.DEV ? "AresLocal!2026" : "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -57,7 +61,7 @@ export function LoginPage() {
         </div>
         <LockKeyIcon size={24} aria-hidden />
         <h2>Entrar no ambiente</h2>
-        <p>Tenant local · Serra Metais Distribuidora</p>
+        <p>Entre com as credenciais da sua empresa.</p>
         <form onSubmit={submit}>
           <label htmlFor="email">E-mail</label>
           <Input

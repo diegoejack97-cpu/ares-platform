@@ -178,6 +178,7 @@ export function PipelinePage() {
   const client = useQueryClient();
   const [showIntegration, setShowIntegration] = useState(false);
   const [intent, setIntent] = useState<MoveIntent | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const pipeline = useInfiniteQuery({
     queryKey: ["pipeline"],
@@ -200,6 +201,7 @@ export function PipelinePage() {
       setNotice(
         `Mudança confirmada pelo CRM.${result.duplicate ? " Intenção já processada; nenhuma duplicação." : ""}${result.correlation_id ? ` Correlação: ${result.correlation_id}` : ""}`,
       );
+      setDialogOpen(false);
       setIntent(null);
       void client.invalidateQueries({ queryKey: ["pipeline"] });
     },
@@ -213,7 +215,7 @@ export function PipelinePage() {
     ).values(),
   ];
   const canMove = Boolean(
-    data?.capabilities.update_stage && data.permissions.can_move,
+    data?.capabilities.update_stage && data.permissions.can_move && !intent,
   );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -232,6 +234,7 @@ export function PipelinePage() {
         confirmed: true,
       },
     });
+    setDialogOpen(true);
   }
   function dragEnd(event: DragEndEvent) {
     const deal = items.find((item) => item.id === event.active.id);
@@ -244,6 +247,20 @@ export function PipelinePage() {
     move.error instanceof PipelineError &&
     [400, 401, 403, 404, 422].includes(move.error.status);
   const uncertain = Boolean(move.error && !conflict && !blocked);
+  const unresolved = Boolean(
+    uncertain ||
+    (move.isSuccess &&
+      move.data?.status &&
+      !["succeeded", "success"].includes(move.data.status)),
+  );
+  function closeDialog() {
+    if (move.isPending) return;
+    setDialogOpen(false);
+    if (!unresolved) {
+      setIntent(null);
+      move.reset();
+    }
+  }
   const stale = Boolean(
     data?.freshness_at && now - Date.parse(data.freshness_at) > 300000,
   );
@@ -305,6 +322,18 @@ export function PipelinePage() {
         <p className="pipeline-notice" role="status">
           {notice}
         </p>
+      )}
+      {intent && unresolved && !dialogOpen && (
+        <div className="pipeline-alert" role="status">
+          <strong>Mudança ainda não confirmada pelo CRM</strong>
+          <p>
+            Fechar a janela não cancela uma operação já enviada. Consulte o
+            mesmo intento antes de solicitar outra mudança.
+          </p>
+          <Button variant="outline" onClick={() => setDialogOpen(true)}>
+            Consultar intento pendente
+          </Button>
+        </div>
       )}
       {pipeline.error && (
         <div className="pipeline-alert" role="alert">
@@ -447,12 +476,9 @@ export function PipelinePage() {
         </>
       )}
       <Dialog.Root
-        open={Boolean(intent)}
+        open={dialogOpen}
         onOpenChange={(open) => {
-          if (!open && !move.isPending && !uncertain) {
-            setIntent(null);
-            move.reset();
-          }
+          if (!open) closeDialog();
         }}
       >
         <Dialog.Portal>
@@ -460,10 +486,10 @@ export function PipelinePage() {
           <Dialog.Content
             className="pipeline-dialog"
             onPointerDownOutside={(event) => {
-              if (move.isPending || uncertain) event.preventDefault();
+              if (move.isPending) event.preventDefault();
             }}
             onEscapeKeyDown={(event) => {
-              if (move.isPending || uncertain) event.preventDefault();
+              if (move.isPending) event.preventDefault();
             }}
           >
             <Dialog.Title>Confirmar mudança no CRM</Dialog.Title>
@@ -495,10 +521,11 @@ export function PipelinePage() {
                     ? "Conflito de versão ou intento. Recarregue o estado do CRM e revise a mudança antes de criar uma nova intenção."
                     : move.error.message}
                 </p>
-                {uncertain && (
+                {unresolved && (
                   <p>
-                    Resultado incerto. A consulta será repetida com a mesma
-                    chave, sem criar outra execução.
+                    Resultado incerto. Fechar esta janela não cancela uma
+                    operação já enviada. A consulta usa a mesma chave, sem criar
+                    outra execução.
                   </p>
                 )}
                 {move.error instanceof PipelineError &&
@@ -514,6 +541,7 @@ export function PipelinePage() {
                   onClick={async () => {
                     const result = await pipeline.refetch();
                     if (!result.isError) {
+                      setDialogOpen(false);
                       setIntent(null);
                       move.reset();
                     }
@@ -528,20 +556,17 @@ export function PipelinePage() {
                 >
                   {move.isPending
                     ? "Aguardando confirmação…"
-                    : uncertain || move.isSuccess
+                    : unresolved || move.isSuccess
                       ? "Consultar o mesmo intento"
                       : "Confirmar e executar"}
                 </Button>
               )}
               <Button
                 variant="outline"
-                disabled={move.isPending || uncertain}
-                onClick={() => {
-                  setIntent(null);
-                  move.reset();
-                }}
+                disabled={move.isPending}
+                onClick={closeDialog}
               >
-                Cancelar
+                {unresolved ? "Fechar janela" : "Cancelar"}
               </Button>
             </div>
           </Dialog.Content>

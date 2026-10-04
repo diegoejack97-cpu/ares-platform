@@ -21,7 +21,11 @@ function subscribe(listener: () => void) {
   };
 }
 export function useLiveClock() {
-  return useSyncExternalStore(subscribe, () => now, () => 0);
+  return useSyncExternalStore(
+    subscribe,
+    () => now,
+    () => 0,
+  );
 }
 
 const reducedQuery = "(prefers-reduced-motion: reduce)";
@@ -34,7 +38,9 @@ function subscribeMotion(listener: () => void) {
 export function useReducedMotion() {
   return useSyncExternalStore(
     subscribeMotion,
-    () => typeof window.matchMedia === "function" && window.matchMedia(reducedQuery).matches,
+    () =>
+      typeof window.matchMedia === "function" &&
+      window.matchMedia(reducedQuery).matches,
     () => true,
   );
 }
