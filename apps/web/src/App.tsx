@@ -53,8 +53,16 @@ const ImpactPage = lazy(() =>
 import { useAuth } from "@/features/auth/auth-context";
 import { ApprovalsPage } from "@/features/decisions/approvals-page";
 import { EventJournalPage } from "@/features/event-journal/event-journal-page";
-import { OpportunityDetailPage } from "@/features/opportunities/opportunity-detail-page";
-import { RadarPage } from "@/features/opportunities/radar-page";
+const OpportunityDetailPage = lazy(() =>
+  import("@/features/opportunities/opportunity-detail-page").then((module) => ({
+    default: module.OpportunityDetailPage,
+  })),
+);
+const RadarPage = lazy(() =>
+  import("@/features/opportunities/radar-page").then((module) => ({
+    default: module.RadarPage,
+  })),
+);
 
 const FakeCRMLabPage = lazy(() =>
   import("@/features/fake-crm-lab/fake-crm-lab-page").then((module) => ({
@@ -109,7 +117,8 @@ function App() {
   const sidebarExpanded = menuOpen || sidebarFocused;
   const now = useLiveClock();
   const radar = useQuery({
-    queryKey: ["opportunities", "", 0],
+    // The navigation count is a single page; never share its cache with the infinite queue.
+    queryKey: ["opportunities", "navigation"],
     queryFn: () => getOpportunities({}),
     refetchInterval: 15_000,
   });
@@ -124,10 +133,14 @@ function App() {
       session.user.id,
       session.user.app_metadata?.active_tenant_id,
     ],
-    queryFn: () => account<{ role: string; company_name: string }>("/me"),
+    queryFn: () =>
+      account<{ role: string; company_name: string; environment?: string }>(
+        "/me",
+      ),
     retry: false,
   });
   const companyName = accountRole.data?.company_name ?? "Sua empresa";
+  const development = accountRole.data?.environment === "development";
   const companyMonogram = companyName
     .split(/\s+/)
     .slice(0, 2)
@@ -296,15 +309,19 @@ function App() {
             <DatabaseIcon aria-hidden />
             <span className="nav-copy">Event Journal</span>
           </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
-            to="/fake-crm"
-            title="Laboratório CRM"
-          >
-            <FlaskIcon aria-hidden />
-            <span className="nav-copy">Laboratório CRM</span>
-            <small className="nav-meta">TESTE</small>
-          </NavLink>
+          {development ? (
+            <NavLink
+              className={({ isActive }) =>
+                `nav-item${isActive ? " active" : ""}`
+              }
+              to="/fake-crm"
+              title="Laboratório CRM"
+            >
+              <FlaskIcon aria-hidden />
+              <span className="nav-copy">Laboratório CRM</span>
+              <small className="nav-meta">TESTE</small>
+            </NavLink>
+          ) : null}
           <NavLink
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
             to="/agentes"
@@ -369,8 +386,20 @@ function App() {
         <div className="sidebar-foot">
           <span className="environment-dot" />
           <div className="sidebar-copy">
-            <strong>Desenvolvimento</strong>
-            <small>FakeCRM · dados locais</small>
+            <strong>
+              {development
+                ? "Desenvolvimento"
+                : accountRole.data?.environment === "demonstration"
+                  ? "Demonstração"
+                  : "ARES Connect"}
+            </strong>
+            <small>
+              {accountRole.data?.environment === "demonstration"
+                ? "Dados sintéticos"
+                : development
+                  ? "FakeCRM · dados locais"
+                  : "Sua empresa"}
+            </small>
           </div>
         </div>
       </aside>
@@ -394,7 +423,13 @@ function App() {
             <span className="tenant-monogram">{companyMonogram}</span>
             {companyName}
           </span>
-          <span className="environment-label">AMBIENTE LOCAL</span>
+          <span className="environment-label">
+            {accountRole.data?.environment === "demonstration"
+              ? "DEMONSTRAÇÃO · DADOS SINTÉTICOS"
+              : accountRole.data?.environment === "production"
+                ? "ARES CONNECT"
+                : "AMBIENTE LOCAL"}
+          </span>
           <span className="topbar-separator" />
           <strong>{session.user.email}</strong>
           <NotificationBell />
@@ -425,140 +460,159 @@ function App() {
           <BillingNotice />
           <QuotaNotice />
         </div>
-        <Routes>
-          <Route
-            path="/command-center"
-            element={
-              <Suspense
-                fallback={
+        <Suspense
+          fallback={
+            <main className="workspace route-loading" role="status">
+              Carregando página…
+            </main>
+          }
+        >
+          <Routes>
+            <Route
+              path="/command-center"
+              element={
+                <Suspense
+                  fallback={
+                    <main className="workspace route-loading" aria-busy="true">
+                      Preparando o Command Center…
+                    </main>
+                  }
+                >
+                  <CommandCenterPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/licenses"
+              element={
+                accountRole.isPending ? (
                   <main className="workspace route-loading" aria-busy="true">
-                    Preparando o Command Center…
+                    Verificando acesso à administração da empresa…
                   </main>
-                }
-              >
-                <CommandCenterPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/licenses"
-            element={
-              accountRole.isPending ? (
-                <main className="workspace route-loading" aria-busy="true">
-                  Verificando acesso à administração da empresa…
-                </main>
-              ) : accountRole.data?.role === "admin" ? (
-                <LicensePage />
-              ) : (
-                <Navigate to="/radar" replace />
-              )
-            }
-          />
-          <Route
-            path="/leads"
-            element={
-              <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-                <LeadsPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/impact"
-            element={
-              <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-                <ImpactPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/chat"
-            element={
-              <Suspense
-                fallback={
-                  <Skeleton
-                    className="h-64 w-full"
-                    aria-label="Carregando chat"
-                  />
-                }
-              >
-                <ChatPage />
-              </Suspense>
-            }
-          />
-          <Route path="/" element={<Navigate to="/radar" replace />} />
-          <Route path="/journal" element={<EventJournalPage />} />
-          <Route
-            path="/agentes"
-            element={
-              <Suspense
-                fallback={
-                  <main
-                    className="workspace"
-                    aria-busy="true"
-                    aria-label="Carregando agentes"
-                  >
-                    <div className="detail-loading">
-                      <i />
-                      <i />
-                      <i />
-                    </div>
-                  </main>
-                }
-              >
-                <AgentsPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/sentinels"
-            element={
-              <Suspense
-                fallback={
+                ) : accountRole.data?.role === "admin" ? (
+                  <LicensePage />
+                ) : (
+                  <Navigate to="/radar" replace />
+                )
+              }
+            />
+            <Route
+              path="/leads"
+              element={
+                <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+                  <LeadsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/impact"
+              element={
+                <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+                  <ImpactPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/chat"
+              element={
+                <Suspense
+                  fallback={
+                    <Skeleton
+                      className="h-64 w-full"
+                      aria-label="Carregando chat"
+                    />
+                  }
+                >
+                  <ChatPage />
+                </Suspense>
+              }
+            />
+            <Route path="/" element={<Navigate to="/radar" replace />} />
+            <Route
+              path="/journal"
+              element={<EventJournalPage development={development} />}
+            />
+            <Route
+              path="/agentes"
+              element={
+                <Suspense
+                  fallback={
+                    <main
+                      className="workspace"
+                      aria-busy="true"
+                      aria-label="Carregando agentes"
+                    >
+                      <div className="detail-loading">
+                        <i />
+                        <i />
+                        <i />
+                      </div>
+                    </main>
+                  }
+                >
+                  <AgentsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/sentinels"
+              element={
+                <Suspense
+                  fallback={
+                    <main className="workspace route-loading" role="status">
+                      Carregando sentinelas…
+                    </main>
+                  }
+                >
+                  <SentinelsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pipeline"
+              element={
+                <Suspense
+                  fallback={
+                    <main className="workspace route-loading" aria-busy="true">
+                      Preparando leitura do funil…
+                    </main>
+                  }
+                >
+                  <PipelinePage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/fake-crm"
+              element={
+                accountRole.isPending ? (
                   <main className="workspace route-loading" role="status">
-                    Carregando sentinelas…
+                    Verificando ambiente…
                   </main>
-                }
-              >
-                <SentinelsPage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/pipeline"
-            element={
-              <Suspense
-                fallback={
-                  <main className="workspace route-loading" aria-busy="true">
-                    Preparando leitura do funil…
-                  </main>
-                }
-              >
-                <PipelinePage />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/fake-crm"
-            element={
-              <Suspense
-                fallback={
-                  <main className="workspace route-loading">
-                    Preparando Laboratório FakeCRM…
-                  </main>
-                }
-              >
-                <FakeCRMLabPage />
-              </Suspense>
-            }
-          />
-          <Route path="/radar" element={<RadarPage />} />
-          <Route path="/approvals" element={<ApprovalsPage />} />
-          <Route
-            path="/opportunities/:id"
-            element={<OpportunityDetailPage />}
-          />
-          <Route path="*" element={<Navigate to="/radar" replace />} />
-        </Routes>
+                ) : development ? (
+                  <Suspense
+                    fallback={
+                      <main className="workspace route-loading">
+                        Preparando Laboratório FakeCRM…
+                      </main>
+                    }
+                  >
+                    <FakeCRMLabPage />
+                  </Suspense>
+                ) : (
+                  <Navigate to="/radar" replace />
+                )
+              }
+            />
+            <Route path="/radar" element={<RadarPage />} />
+            <Route path="/approvals" element={<ApprovalsPage />} />
+            <Route
+              path="/opportunities/:id"
+              element={<OpportunityDetailPage />}
+            />
+            <Route path="*" element={<Navigate to="/radar" replace />} />
+          </Routes>
+        </Suspense>
       </div>
     </div>
   );

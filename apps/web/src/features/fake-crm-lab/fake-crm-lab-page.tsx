@@ -235,15 +235,13 @@ export function FakeCRMLabPage() {
           </p>
         </div>
         <div className="lab-header-actions">
-          <Button variant="outline" asChild>
-            <a
-              href="http://127.0.0.1:8010/docs"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ArrowSquareOutIcon aria-hidden /> Abrir contrato HTTP
-            </a>
-          </Button>
+          {snapshot?.docs_url ? (
+            <Button variant="outline" asChild>
+              <a href={snapshot.docs_url} target="_blank" rel="noreferrer">
+                <ArrowSquareOutIcon aria-hidden /> Abrir contrato HTTP
+              </a>
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="destructive"
@@ -271,7 +269,7 @@ export function FakeCRMLabPage() {
             <p>
               {isPermissionDenied
                 ? "O Laboratório FakeCRM é uma ferramenta de desenvolvimento disponível somente para administradores."
-                : "Confirme os processos ARES API em 8000 e FakeCRM em 8010. Nenhum dado foi inventado para preencher esta tela."}
+                : "Confirme a API do ARES e o endereço do FakeCRM configurado no servidor. Nenhum dado foi inventado para preencher esta tela."}
             </p>
           </div>
           <Button variant="outline" onClick={() => snapshotQuery.refetch()}>

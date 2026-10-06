@@ -44,6 +44,7 @@ export interface FakeCRMLabSnapshot {
   watermark: string | null;
   freshness_at: string;
   source: string;
+  docs_url: string;
 }
 
 export interface FakeCRMFaultResult {

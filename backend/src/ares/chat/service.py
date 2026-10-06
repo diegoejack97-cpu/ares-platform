@@ -5,7 +5,7 @@ import json
 import re
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import psycopg
@@ -18,9 +18,20 @@ from ares.ai.models import response_model
 from ares.ai.quotas import estimate_usd
 from ares.ai.usage import UsageObservation, observe, record_usage
 from ares.auth.models import AuthenticatedUser
-from ares.chat.search import STAGE_ALIASES, OpportunitySearch, make_context, normalize, search_terms
+from ares.chat.conversation import conversation_reference, recent_turns
+from ares.chat.search import (
+    CONTEXT_LIMIT,
+    STAGE_ALIASES,
+    OpportunitySearch,
+    comparison_criterion,
+    make_context,
+    normalize,
+    numeric_value,
+    search_terms,
+)
 from ares.config import Settings
 from ares.graph.service import GraphService, GraphUnavailable
+from ares.integrations.models import STAGES
 from ares.intelligence.chat_context import bounded_context
 from ares.intelligence.service import IntelligenceService
 
@@ -37,6 +48,19 @@ RULES = (
     "Em pedidos gerais, apresente os registros retornados como recorte, com etapa e valor quando existirem; "
     "não afirme que o recorte é o total do funil. Só peça precisão se uma consulta específica for ambígua. "
     "Identifique quando o CRM estiver indisponível ou a busca for parcial."
+    " Pedidos anteriores só ajudam a interpretar referências; jamais substituem os fatos atuais "
+    "de get_context. Dê continuidade à conversa e ofereça um próximo recorte útil. "
+    "Melhor oportunidade exige critério: diferencie valor, urgência ARES e chance de fechar; "
+    "o score ARES mede atenção/risco, não probabilidade de venda."
+    " Interprete a intenção, não apenas palavras-chave. Se a consulta textual vier vazia ou "
+    "insuficiente, use search_opportunities: name só para um nome/ID real citado pelo usuário, "
+    "stage para uma etapa ou nenhum filtro para descobrir registros. Nunca coloque a pergunta "
+    "ou termos como 'esforços comerciais nesta semana' no campo name. Uma busca textual vazia "
+    "não prova ausência de dados. Não apresente um recorte como contagem ou soma global. "
+    "Apresente etapas canônicas em português, preservando nomes personalizados. "
+    "Explique o que você consegue verificar e faça uma pergunta objetiva quando faltarem "
+    "critérios. Não prometa configurar sentinelas, aprovar ações ou consultar usuários: "
+    "essas ferramentas não estão disponíveis nesta conversa."
 )
 
 
@@ -96,6 +120,7 @@ def general_answer(context: dict[str, Any]) -> str:
         def money(item: dict[str, Any]) -> str:
             if item.get("value") is None:
                 return "—"
+
             try:
                 amount = Decimal(str(item["value"]))
                 if not amount.is_finite():
@@ -104,6 +129,14 @@ def general_answer(context: dict[str, Any]) -> str:
                 return cell(f"{item.get('currency') or 'Moeda não informada'} {number}")
             except (InvalidOperation, ValueError):
                 return "—"
+
+        def stage(item: dict[str, Any]) -> str:
+            value = (
+                item.get("external_stage")
+                or item.get("canonical_stage")
+                or item.get("opportunity_state")
+            )
+            return cell(STAGES.get(value, value) if isinstance(value, str) else value)
 
         rows = [
             "| Oportunidade ou negócio | Etapa | Valor | Fonte |",
@@ -115,11 +148,7 @@ def general_answer(context: dict[str, Any]) -> str:
                 + " | ".join(
                     (
                         cell(item.get("title") or "Oportunidade ARES sem negócio associado"),
-                        cell(
-                            item.get("external_stage")
-                            or item.get("canonical_stage")
-                            or item.get("opportunity_state")
-                        ),
+                        stage(item),
                         money(item),
                         cell(item.get("source")),
                     )
@@ -133,6 +162,45 @@ def general_answer(context: dict[str, Any]) -> str:
     if limitations:
         answer += "\n\n**Limitação:** " + " ".join(cell_text for cell_text in limitations)
     return answer
+
+
+def comparison_answer(context: dict[str, Any], question: str) -> str:
+    payload = json.loads(context["content"])
+    matches = payload.get("matches", [])
+    criterion = payload.get("criterion")
+    if not matches:
+        return general_answer(context)
+    if criterion in {"value", "lowest_value"}:
+        known = [item for item in matches if numeric_value(item) is not None]
+        currencies = set(payload.get("currencies", [item.get("currency") for item in known]))
+        if not known:
+            lead = "Encontrei negócios, mas faltam valores para compará-los por esse critério."
+        elif len(currencies) != 1 or None in currencies or "" in currencies:
+            lead = "Há moedas diferentes ou não informadas. Não comparo esses valores sem uma taxa de conversão. Qual moeda você quer analisar?"
+        else:
+            selected = known[0]
+            direction = "menor" if criterion == "lowest_value" else "maior"
+            title = str(selected.get("title") or "Negócio sem título")[:160]
+            lead = f"Pelo **{direction} valor entre negócios abertos**, o destaque no recorte consultado é **{title}**."
+            if "melhor" in normalize(question):
+                lead += " Usei valor como critério inicial; isso não significa maior chance de fechamento."
+            ties = sum(numeric_value(item) == numeric_value(selected) for item in known)
+            if ties > 1:
+                lead += f" Há {ties} registros no recorte empatados nesse valor; não há um vencedor único por esse critério."
+    else:
+        priorities = [item for item in matches if item.get("priority") is not None]
+        lead = (
+            f"Para **prioridade de atenção no ARES**, o primeiro registro é **{priorities[0].get('title') or 'Oportunidade ARES'}**. "
+            "Essa prioridade indica risco/urgência, não chance de fechamento."
+            if priorities
+            else "Os registros encontrados ainda não têm prioridade ARES salva para essa comparação."
+        )
+    return (
+        lead
+        + "\n\n"
+        + general_answer(context)
+        + "\n\nPosso continuar por **valor**, **prioridade ARES** ou uma **etapa específica**. Qual critério faz mais sentido para você?"
+    )
 
 
 class ChatFailure(Exception):
@@ -202,16 +270,54 @@ class ChatService:
     def prepare(self, user: AuthenticatedUser, scope: UUID | None, text: str) -> dict[str, Any]:
         context = self.context(user, scope) if scope else self.empty_context(user)
         greeting = is_greeting(text)
+        if scope and not greeting and not self.settings.openai_api_key.get_secret_value():
+            raise ChatFailure("model_not_configured")
+        turns = [] if greeting else recent_turns(self.settings.database_url, user, scope)
+        references, reference = conversation_reference(turns, text)
         if scope is None and not greeting:
             # Retrieval precedes model/quota preflight. Empty evidence never needs a model.
-            context = OpportunitySearch(self.settings).read(user, text)
+            search = OpportunitySearch(self.settings)
+            context = (
+                search.read(user, text, references)
+                if references is not None
+                else search.read(user, text)
+            )
+        previous_requests = [str(turn.get("user_text", ""))[:500] for turn in reversed(turns)]
+        model_input = (
+            json.dumps(
+                {
+                    "previous_user_requests": previous_requests,
+                    "conversation_reference": reference,
+                    "current_request": text,
+                },
+                ensure_ascii=False,
+            )
+            if previous_requests
+            else text
+        )
+        if turns:
+            context["conversation_reference"] = {
+                **reference,
+                "previous_user_requests": previous_requests,
+            }
         context["instruction_tokens_upper_bound"] = len(RULES.encode())
-        context["question_tokens_upper_bound"] = len(text.encode())
+        context["question_tokens_upper_bound"] = len(model_input.encode())
         general = scope is None and not greeting and is_general_discovery(text)
+        comparison = (
+            scope is None
+            and not greeting
+            and comparison_criterion(text) is not None
+            and not self.settings.openai_api_key.get_secret_value()
+        )
         no_matches = (
             scope is None and not greeting and not json.loads(context["content"]).get("matches")
         )
-        deterministic = greeting or general or no_matches
+        deterministic = (
+            greeting
+            or general
+            or comparison
+            or (no_matches and not self.settings.openai_api_key.get_secret_value())
+        )
         if not deterministic and not self.settings.openai_api_key.get_secret_value():
             raise ChatFailure("model_not_configured")
         correlation, run_id, message = uuid4(), uuid4(), uuid4()
@@ -256,7 +362,7 @@ class ChatService:
             db.execute(
                 "insert into public.agent_runs(id,tenant_id,opportunity_id,context_ref,correlation_id,"
                 "agent_name,agent_version,model_id,prompt_hash,output_schema_version,generation_mode,status) "
-                "values(%s,%s,%s,%s,%s,'chat','m5.2',%s,%s,'chat.v2',%s,'running')",
+                "values(%s,%s,%s,%s,%s,'chat','m5.3',%s,%s,'chat.v2',%s,'running')",
                 (
                     run_id,
                     user.tenant_id,
@@ -264,7 +370,9 @@ class ChatService:
                     context["context_ref"] if scope else None,
                     correlation,
                     None if deterministic else self.settings.openai_model,
-                    hashlib.sha256((RULES + text + context["content_hash"]).encode()).hexdigest(),
+                    hashlib.sha256(
+                        (RULES + model_input + context["content_hash"]).encode()
+                    ).hexdigest(),
                     "deterministic_fallback" if deterministic else "agno_openai",
                 ),
             )
@@ -290,14 +398,15 @@ class ChatService:
                 "user": user,
                 "greeting": greeting,
                 "general": general,
+                "comparison": comparison,
                 "retrieved": scope is None and not greeting,
                 "scope": scope,
             }
         try:
             estimate = estimate_usd(
                 self.settings.openai_model,
-                len((RULES + text + str(context["content"])).encode()),
-                2,
+                len((RULES + model_input).encode()) + 3 * CONTEXT_LIMIT,
+                4,
             )
             budget = AIBudgetGuard(self.settings.database_url).reserve(
                 user.tenant_id, run_id, estimate
@@ -323,6 +432,7 @@ class ChatService:
             "correlation_id": correlation,
             "context": context,
             "text": text,
+            "model_input": model_input,
             "user": user,
             "scope": scope,
             "retrieved": scope is None and not greeting,
@@ -332,13 +442,15 @@ class ChatService:
         context, user = prepared["context"], prepared["user"]
         usage = UsageObservation(
             status="not_called"
-            if prepared.get("greeting") or prepared.get("general")
+            if prepared.get("greeting") or prepared.get("general") or prepared.get("comparison")
             else "unavailable",
             model_id=None
-            if prepared.get("greeting") or prepared.get("general")
+            if prepared.get("greeting") or prepared.get("general") or prepared.get("comparison")
             else self.settings.openai_model,
         )
         content, trace, completed, consulted = "", [], False, False
+        pending_contexts: list[dict[str, Any]] = []
+        retrievals: list[dict[str, Any]] = []
 
         if prepared.get("greeting"):
             content = "Olá! Como posso ajudar? Você pode perguntar sobre uma oportunidade ou negócio do CRM."
@@ -362,8 +474,53 @@ class ChatService:
         def get_context() -> str:
             """Read the fixed, authorized opportunity context with event IDs; no arguments."""
             nonlocal consulted
+            self.authorize(user)
             consulted = True
             return str(context["content"])
+
+        def search_opportunities(
+            name: str = "",
+            stage: Literal[
+                "", "new", "qualification", "proposal", "negotiation", "won", "lost"
+            ] = "",
+            order: Literal["recent", "value", "lowest_value", "urgency"] = "recent",
+        ) -> str:
+            """Read current authorized deals. No filters = discover available records. name is ONLY an actual record name/ID, never a question. Use name OR canonical stage, not both. order value/lowest_value compares open business value; urgency ranks ARES risk. Returns at most eight records, never totals. Read only."""
+            nonlocal context, consulted
+            # Arguments never become SQL. Bound each query and recheck access on every tool call.
+            if len(retrievals) >= 2:
+                return json.dumps({"error": "search_limit", "matches": []})
+            if (
+                len(name) > 160
+                or (name and stage)
+                or stage not in {"", *STAGES}
+                or order not in {"recent", "value", "lowest_value", "urgency"}
+            ):
+                return json.dumps({"error": "invalid_search_filters", "matches": []})
+            ordering = {
+                "recent": "",
+                "value": "maior valor ",
+                "lowest_value": "menor valor ",
+                "urgency": "priorizar ",
+            }[order]
+            query = ordering + "oportunidades"
+            if name:
+                query += " com nome " + name.strip()
+            elif stage:
+                query += " em " + STAGES[stage]
+            self.authorize(user)
+            reference_scope = (
+                prepared["context"].get("conversation_reference", {}).get("record_references")
+            )
+            fresh = OpportunitySearch(self.settings).read(user, query, reference_scope)
+            retrievals.append({"query": query, "context": fresh})
+            if context.get("conversation_reference"):
+                fresh["conversation_reference"] = context["conversation_reference"]
+            context = fresh
+            consulted = True
+            trace.append({"name": "search_opportunities", "status": "completed"})
+            pending_contexts.append(fresh)
+            return str(fresh["content"])
 
         try:
             yield sse("status", {"phase": "searching", "label": "Buscando oportunidades…"})
@@ -391,12 +548,18 @@ class ChatService:
                 },
             )
             yield sse("status", {"phase": "writing", "label": "Organizando a resposta…"})
-            if prepared.get("general"):
+            if prepared.get("comparison"):
+                content = comparison_answer(context, prepared["text"])
+                completed = True
+                yield sse("token", {"text": content})
+            elif prepared.get("general"):
                 content = general_answer(context)
                 completed = True
                 yield sse("token", {"text": content})
-            elif prepared.get("scope") is None and not json.loads(context["content"]).get(
-                "matches"
+            elif (
+                prepared.get("scope") is None
+                and not json.loads(context["content"]).get("matches")
+                and not prepared.get("model_input")
             ):
                 # No retrieved evidence: do not ask the model to fill the gap.
                 content = general_answer(context)
@@ -410,16 +573,33 @@ class ChatService:
                         self.settings.openai_model, self.settings.openai_api_key.get_secret_value()
                     ),
                     instructions=[RULES],
-                    tools=[get_context],
-                    tool_call_limit=1,
+                    tools=[get_context]
+                    + ([search_opportunities] if prepared.get("scope") is None else []),
+                    tool_call_limit=3 if prepared.get("scope") is None else 1,
                     telemetry=False,
                     markdown=True,
                 )
-                for event in agent.run(prepared["text"], stream=True, stream_events=True):
+                for event in agent.run(
+                    prepared.get("model_input", prepared["text"]), stream=True, stream_events=True
+                ):
+                    while pending_contexts:
+                        yield sse(
+                            "context",
+                            {
+                                **pending_contexts.pop(0),
+                                "message_id": prepared["id"],
+                                "correlation_id": prepared["correlation_id"],
+                            },
+                        )
                     kind = getattr(event, "event", "")
                     if kind in {"ToolCallStarted", "ToolCallCompleted"}:
+                        tool_name = getattr(
+                            getattr(event, "tool", None), "tool_name", "get_context"
+                        )
                         tool = {
-                            "name": "get_context",
+                            "name": tool_name
+                            if tool_name in {"get_context", "search_opportunities"}
+                            else "get_context",
                             "status": "running" if kind.endswith("Started") else "completed",
                         }
                         trace.append(tool)
@@ -442,6 +622,22 @@ class ChatService:
                 {"code": "model_response_failed", "correlation_id": prepared["correlation_id"]},
             )
         finally:
+            if retrievals:
+                context["retrieval_history"] = json.loads(
+                    json.dumps(
+                        [{"query": prepared["text"], "context": prepared["context"]}, *retrievals],
+                        default=str,
+                    )
+                )
+                with psycopg.connect(self.settings.database_url) as db:
+                    db.execute(
+                        "update public.messages set context_json=%s where tenant_id=%s and id=%s",
+                        (
+                            Jsonb(json.loads(json.dumps(context, default=str))),
+                            user.tenant_id,
+                            prepared["id"],
+                        ),
+                    )
             record_usage(self.settings.database_url, user.tenant_id, prepared["run_id"], usage)
             with psycopg.connect(self.settings.database_url) as db:
                 state = "succeeded" if completed else "failed"

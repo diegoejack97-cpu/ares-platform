@@ -143,6 +143,7 @@ export interface Recommendation {
   approval_expires_at: string | null;
   /** Server authorization for the current member; absence keeps actions hidden. */
   can_decide?: boolean;
+  execution_block_reason?: string | null;
   approval_required_role?: string | null;
   intent_id: string | null;
   action_status: string | null;

@@ -38,6 +38,7 @@ class FakeCRMLabClient:
             "watermark": deals.get("watermark"),
             "freshness_at": datetime.now(UTC).isoformat(),
             "source": "FakeCRM HTTP Sandbox",
+            "docs_url": f"{self._base_url}/docs",
         }
 
     async def get_deal(self, deal_id: str) -> dict[str, Any]:

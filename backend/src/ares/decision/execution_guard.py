@@ -35,7 +35,9 @@ def check_execution_contract(db: psycopg.Connection[Any], tenant_id: UUID) -> No
         "select state, grace_until from public.tenant_billing_state where tenant_id=%s for share",
         (tenant_id,),
     ).fetchone()
-    if not billing or billing["state"] not in {"active", "past_due"}:
+    if not billing:
+        raise ExecutionBlocked("billing_unconfigured")
+    if billing["state"] not in {"active", "past_due"}:
         raise ExecutionBlocked("billing_degraded")
     # now() is the transaction start and may precede a wait on any lock above.
     # Sample the server wall clock only after all authorization locks are held.

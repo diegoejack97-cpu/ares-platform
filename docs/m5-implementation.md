@@ -203,3 +203,13 @@ Esse registro descreve o ambiente de 14/09. Em 26/09, a configuração local foi
 reverificada: modelo `gpt-5.4`, chave presente somente no backend e API saudável.
 Isso não substitui os resultados de validação da evolução acima nem constitui
 homologação do CRM do cliente.
+
+## Evolução conversacional — 06/10/2026
+
+Por solicitação explícita do usuário, o chat passa a interpretar continuações da
+conversa e perguntas livres. A restrição histórica de não incluir pedidos anteriores
+no prompt é substituída por até três pedidos privados nas últimas 24 horas, com
+reconsulta dos registros citados. Respostas antigas não fundamentam fatos atuais.
+Ferramentas de leitura com filtros estruturados permitem reformular consultas;
+autorizações, isolamento, orçamento e ausência de escrita continuam obrigatórios.
+Comportamento e limites estão em [Chat ARES — interpretação e continuidade](chat-conversation-2026-10-06.md).

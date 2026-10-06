@@ -10,8 +10,9 @@ import psycopg
 from psycopg.rows import dict_row
 
 from ares.config import get_settings
-from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
+from ares.connectors.http_fake_crm import CRMProviderRequestError
 from ares.connectors.provider import CRMProvider
+from ares.connectors.resolver import TenantCRMProvider, crm_for
 from ares.decision.execution_guard import ExecutionBlocked
 from ares.decision.service import DecisionService
 from ares.event_journal.models import IncomingCRMEvent
@@ -124,29 +125,27 @@ class TickWorker:
     def _process_job(self, job: dict[str, Any]) -> None:
         if job["kind"] == "integration.sync":
             settings = get_settings()
-            if settings.environment != "development":
-                raise IntegrationError("client_crm_adapter_not_configured", 503)
-            provider = FakeCRMHTTPProvider(
-                settings.fake_crm_base_url,
-                settings.fake_crm_api_key.get_secret_value(),
-                settings.fake_crm_timeout_seconds,
-                correlation_id=str(job["correlation_id"]),
-            )
-            try:
+            settings = settings.model_copy(update={"database_url": self._database_url})
+            with crm_for(
+                settings,
+                UUID(str(job["tenant_id"])),
+                UUID(str(job["payload"]["connection_id"])),
+                str(job["correlation_id"]),
+            ) as provider:
                 IntegrationService(self._database_url, job["tenant_id"], provider).process_job(job)
-            finally:
-                provider.close()
             return
         elif job["kind"] == "integration.project":
             IntelligenceService(self._database_url, job["tenant_id"]).process_event_sync(
                 UUID(job["payload"]["event_id"])
             )
         elif job["kind"] == "action.execute":
-            if self._provider is None:
-                raise RuntimeError("crm_provider_missing")
+            action_provider = self._provider or TenantCRMProvider(
+                get_settings().model_copy(update={"database_url": self._database_url}),
+                UUID(str(job["tenant_id"])),
+            )
             intent_id = UUID(str(job["payload"]["intent_id"]))
             result = DecisionService(
-                self._database_url, UUID(str(job["tenant_id"])), self._provider
+                self._database_url, UUID(str(job["tenant_id"])), action_provider
             ).execute_intent_sync(intent_id)
             if result["status"] == "cancelled":
                 raise ExecutionBlocked("action_intent_cancelled")

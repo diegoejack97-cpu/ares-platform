@@ -29,15 +29,19 @@ class BillingCommand(ProviderCommand):
 
 def billing_status(database_url: str, tenant: UUID) -> dict[str, Any]:
     with psycopg.connect(database_url, row_factory=dict_row) as db:
-        row = db.execute(
-            "select b.state,b.due_since,b.grace_until,"
-            "(b.state='degraded' or (b.state='past_due' and "
-            "(now() at time zone t.timezone)::date>b.grace_until)) as degraded "
-            "from public.tenants t join public.tenant_billing_state b on b.tenant_id=t.id "
-            "where t.id=%s",
-            (tenant,),
-        ).fetchone()
-    return dict(row) if row else {"state": "unconfigured", "degraded": False}
+        return billing_status_on(db, tenant)
+
+
+def billing_status_on(db: psycopg.Connection[Any], tenant: UUID) -> dict[str, Any]:
+    row = db.execute(
+        "select b.state,b.due_since,b.grace_until,"
+        "(b.state='degraded' or (b.state='past_due' and "
+        "(clock_timestamp() at time zone t.timezone)::date>b.grace_until)) as degraded "
+        "from public.tenants t join public.tenant_billing_state b on b.tenant_id=t.id "
+        "where t.id=%s",
+        (tenant,),
+    ).fetchone()
+    return dict(row) if row else {"state": "unconfigured", "degraded": True}
 
 
 def set_billing(

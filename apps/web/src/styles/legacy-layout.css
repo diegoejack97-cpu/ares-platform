@@ -1346,6 +1346,9 @@ h1 {
   border-left: 3px solid var(--destructive);
 }
 .lab-unavailable > svg {
+  width: 24px;
+  height: 24px;
+  max-width: 24px;
   color: var(--destructive);
 }
 .lab-unavailable strong {

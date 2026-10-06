@@ -31,11 +31,17 @@ def contract():
             "values(%s,1,10,10,5,'synthetic test',%s)",
             (tenant, actor),
         )
+        db.execute(
+            "insert into public.tenant_billing_state(tenant_id,state,reason,changed_by) "
+            "values(%s,'active','synthetic quota contract',%s)",
+            (tenant, actor),
+        )
     yield url, tenant, actor
     with psycopg.connect(url) as db:
         db.execute("delete from public.ai_budget_reservations where tenant_id=%s", (tenant,))
         db.execute("delete from public.tenant_usage_daily where tenant_id=%s", (tenant,))
         db.execute("delete from public.tenant_quotas where tenant_id=%s", (tenant,))
+        db.execute("delete from public.tenant_billing_state where tenant_id=%s", (tenant,))
         db.execute("delete from public.sentinel_schedules where tenant_id=%s", (tenant,))
         db.execute("delete from public.tenants where id=%s", (tenant,))
         db.execute("delete from auth.users where id=%s", (actor,))
@@ -106,3 +112,72 @@ def test_membership_activation_enforces_seats_at_database(contract):
                 (tenant, other),
             )
         db.rollback()
+
+
+def test_absent_billing_denies_reservation_and_direct_database_write(contract):
+    url, tenant, actor = contract
+    with psycopg.connect(url) as db:
+        db.execute(
+            "insert into public.memberships(tenant_id,user_id,role) values(%s,%s,'admin')",
+            (tenant, actor),
+        )
+        db.execute("delete from public.tenant_billing_state where tenant_id=%s", (tenant,))
+    try:
+        result = QuotaGuard(url).reserve(tenant, uuid4(), Decimal("0.01"))
+        assert not result.allowed and result.code == "billing_unconfigured"
+        with psycopg.connect(url) as db:
+            import json
+
+            db.execute(
+                "select set_config('request.jwt.claims',%s,true)",
+                (
+                    json.dumps(
+                        {
+                            "sub": str(actor),
+                            "role": "authenticated",
+                            "app_metadata": {"active_tenant_id": str(tenant)},
+                        }
+                    ),
+                ),
+            )
+            db.execute("set local role authenticated")
+            assert db.execute("select private.billing_writable(%s)", (tenant,)).fetchone() == (
+                False,
+            )
+            with pytest.raises(psycopg.errors.InsufficientPrivilege), db.transaction():
+                db.execute(
+                    "insert into public.deals(tenant_id,title) values(%s,'Blocked fixture')",
+                    (tenant,),
+                )
+    finally:
+        with psycopg.connect(url) as db:
+            db.execute("delete from public.memberships where tenant_id=%s", (tenant,))
+
+
+def test_previous_day_reservation_does_not_inflate_daily_quota_notice(contract):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from ares.auth.models import AuthenticatedUser
+    from ares.config import Settings
+    from ares.provider.account import account_router
+
+    url, tenant, actor = contract
+    run = uuid4()
+    assert QuotaGuard(url).reserve(tenant, run, Decimal("1")).allowed
+    with psycopg.connect(url) as db:
+        db.execute(
+            "update public.ai_budget_reservations set day=day-1 where tenant_id=%s and run_id=%s",
+            (tenant, run),
+        )
+    app = FastAPI()
+    user = AuthenticatedUser(user_id=actor, tenant_id=tenant, role="admin")
+    app.include_router(account_router(Settings(_env_file=None, database_url=url), lambda: user))
+    with TestClient(app) as client:
+        response = client.get("/api/v1/account/quota")
+    assert response.status_code == 200
+    data = response.json()
+    assert Decimal(str(data["daily_reserved"])) == 0
+    assert Decimal(str(data["reserved"])) == 5
+    assert Decimal(str(data["daily_available"])) == 10
+    assert Decimal(str(data["monthly_available"])) == 5

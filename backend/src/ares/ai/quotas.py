@@ -9,6 +9,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from ares.ai.models import model_profile
+from ares.provider.billing import billing_status_on
 
 
 @dataclass(frozen=True)
@@ -50,12 +51,13 @@ class QuotaGuard:
         ).fetchone()
         if not quota:
             return QuotaDecision(False, False, "quota_unconfigured")
-        bill = db.execute(
-            "select 1 from public.tenant_billing_state where tenant_id=%s and (state='degraded' or (state='past_due' and grace_until<%s))",
-            (tenant, quota["day"]),
-        ).fetchone()
-        if bill:
-            return QuotaDecision(False, False, "billing_degraded")
+        bill = billing_status_on(db, tenant)
+        if bill["degraded"]:
+            return QuotaDecision(
+                False,
+                False,
+                "billing_unconfigured" if bill["state"] == "unconfigured" else "billing_degraded",
+            )
         prior = db.execute(
             "select status from public.ai_budget_reservations where tenant_id=%s and run_id=%s",
             (tenant, run),

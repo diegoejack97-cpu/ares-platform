@@ -24,6 +24,13 @@ export function BillingNotice() {
         verificadas pelo servidor.
       </NoticeBar>
     );
+  if (query.data?.state === "unconfigured")
+    return (
+      <NoticeBar tone="warning" title="Cobrança não configurada.">
+        Solicite a liberação do contrato ao administrador da plataforma. Novas
+        ações ficam bloqueadas; leitura e histórico continuam disponíveis.
+      </NoticeBar>
+    );
   if (!query.data || !["past_due", "degraded"].includes(query.data.state))
     return null;
   if (query.data.degraded)
@@ -72,10 +79,12 @@ export function QuotaNotice() {
   if (!query.data.warning) return null;
   return (
     <NoticeBar tone="warning" title="Cota de IA perto do limite.">
-      Consumo e reservas atingiram pelo menos 80% do contrato:{" "}
-      {brl(query.data.daily)} hoje e {brl(query.data.monthly)} no mês, para
-      limites de {brl(query.data.ai_daily_budget_brl)}/dia e{" "}
-      {brl(query.data.ai_monthly_budget_brl)}/mês.
+      Hoje: {brl(query.data.daily)} consumidos, {brl(query.data.daily_reserved)}{" "}
+      reservados e {brl(query.data.daily_available)} disponíveis de{" "}
+      {brl(query.data.ai_daily_budget_brl)}. No mês: {brl(query.data.monthly)}{" "}
+      consumidos, {brl(query.data.reserved)} reservados e{" "}
+      {brl(query.data.monthly_available)} disponíveis de{" "}
+      {brl(query.data.ai_monthly_budget_brl)}.
     </NoticeBar>
   );
 }

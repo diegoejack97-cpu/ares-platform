@@ -112,6 +112,8 @@ if (membershipError) throw membershipError;
 
 const rootEnv = [
   "ARES_ENVIRONMENT=development",
+  "ARES_CRM_PROVIDER=http_fake",
+  "ARES_FAKE_CRM_BASE_URL=http://127.0.0.1:8010",
   `ARES_FAKE_CRM_WEBHOOK_SECRET=${WEBHOOK_SECRET}`,
   'ARES_CORS_ORIGINS=["http://localhost:5173"]',
   "ARES_EVENT_JOURNAL_BACKEND=postgres",

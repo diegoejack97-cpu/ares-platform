@@ -530,6 +530,88 @@ def test_worker_commercial_block_is_terminal_and_never_requeues_unsafe_write(
     assert provider.write_calls == 0
 
 
+def test_unreleased_contract_cannot_generate_decide_or_advertise_approval(
+    db_url: str, opportunity: tuple[DecisionService, CountingProvider, UUID]
+) -> None:
+    service, provider, opportunity_id = opportunity
+    created = service.create_recommendation_sync(opportunity_id, ADMIN)
+    before = pending_state(db_url, created["recommendation_id"])
+    with changed_row(
+        db_url,
+        "tenant_billing_state",
+        "tenant_id",
+        TENANT,
+        {
+            "state": "degraded",
+            "due_since": date.today() - timedelta(days=3),
+            "grace_until": date.today() - timedelta(days=1),
+        },
+    ):
+        assert not service._can_request_recommendation_sync(opportunity_id, ADMIN)
+        with pytest.raises(DecisionAuthorizationError, match="billing_degraded"):
+            service.create_recommendation_sync(opportunity_id, ADMIN)
+        detail = service._get_recommendation_sync(created["recommendation_id"], ADMIN)
+        assert detail and not detail["can_decide"]
+        assert detail["execution_block_reason"] == "billing_degraded"
+        with pytest.raises(DecisionAuthorizationError, match="billing_degraded"):
+            service.decide_sync(
+                created["recommendation_id"],
+                DecideCommand(verdict="approved", expected_version=created["version"]),
+                ADMIN,
+            )
+        assert pending_state(db_url, created["recommendation_id"]) == before
+        assert provider.write_calls == 0
+
+
+def test_restarted_worker_recovers_expired_lease_without_duplicate_crm_effect(
+    db_url: str, opportunity: tuple[DecisionService, CountingProvider, UUID]
+) -> None:
+    service, provider, opportunity_id = opportunity
+    created = service.create_recommendation_sync(opportunity_id, ADMIN)
+    approved = service.decide_sync(
+        created["recommendation_id"],
+        DecideCommand(verdict="approved", expected_version=created["version"]),
+        ADMIN,
+    )
+    with psycopg.connect(db_url) as db:
+        job_id = db.execute(
+            "update public.jobs set status='running', attempts=1, lease_owner='crashed', "
+            "lease_until=now()-interval '1 minute',run_after='1900-01-01' "
+            "where kind='action.execute' and payload->>'intent_id'=%s returning id",
+            (str(approved["intent_id"]),),
+        ).fetchone()[0]
+    # Simulate an accepted CRM request whose response was lost before local persistence.
+    original_write = provider.create_task
+
+    def lost_response(deal_id: str, title: str, key: str) -> CRMWriteResult:
+        original_write(deal_id, title, key)
+        raise RuntimeError("synthetic lost response")
+
+    provider.create_task = lost_response
+    first = TickWorker(db_url, "", "", provider=provider, worker_name="recovery-first")
+    claimed = first._claim_jobs(1, ["action.execute"])
+    assert claimed[0]["id"] == job_id
+    with pytest.raises(RuntimeError) as error:
+        first._process_job(claimed[0])
+    first._fail_job(claimed[0], error.value)
+    assert len(provider._writes) == 1
+    provider.create_task = original_write
+    with psycopg.connect(db_url) as db:
+        db.execute("update public.jobs set run_after='1900-01-01' where id=%s", (job_id,))
+    restarted = TickWorker(db_url, "", "", provider=provider, worker_name="recovery-restarted")
+    retry = restarted._claim_jobs(1, ["action.execute"])
+    assert retry[0]["id"] == job_id
+    restarted._process_job(retry[0])
+    assert len(provider._writes) == 1 and provider.write_calls == 2
+    action = service._get_action_sync(approved["intent_id"])
+    assert action and action["intent"]["status"] == "succeeded"
+    assert action["execution"] and len(action["attempts"]) == 2
+    with psycopg.connect(db_url) as db:
+        assert db.execute(
+            "select status,attempts from public.jobs where id=%s", (job_id,)
+        ).fetchone() == ("succeeded", 3)
+
+
 def test_plan_expiring_during_lock_wait_blocks_dispatch_using_wall_clock(db_url: str) -> None:
     provider = CountingProvider()
     transaction_started = Event()

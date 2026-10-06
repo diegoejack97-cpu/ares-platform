@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 
 from ares.auth.models import AuthenticatedUser
 from ares.connectors.http_fake_crm import CRMProviderRequestError
+from ares.decision.execution_guard import ExecutionBlocked, execution_contract
 from ares.integrations.models import StageCommand, digest, normalize
 from ares.integrations.service import IntegrationError, IntegrationService
 
@@ -27,7 +28,10 @@ class PipelineService(IntegrationService):
             if not acquired or not acquired["ok"]:
                 raise IntegrationError("write_in_progress")
             try:
-                return self._move_locked(user, deal_id, command)
+                with execution_contract(self.database_url, self.tenant_id):
+                    return self._move_locked(user, deal_id, command)
+            except ExecutionBlocked as error:
+                raise IntegrationError(error.code, 403) from error
             finally:
                 guard.execute("select pg_advisory_unlock(hashtext(%s))", (lock_name,))
 

@@ -105,5 +105,5 @@ def test_billing_grace_release_and_audit():
 def test_unconfigured_billing_does_not_invent_a_contract():
     assert billing_status(os.environ["ARES_TEST_DATABASE_URL"], uuid4()) == {
         "state": "unconfigured",
-        "degraded": False,
+        "degraded": True,
     }

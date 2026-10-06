@@ -63,6 +63,7 @@ const snapshot = {
   watermark: "2026-09-01T12:00:00Z",
   freshness_at: "2026-09-03T12:00:00Z",
   source: "FakeCRM HTTP Sandbox",
+  docs_url: "http://127.0.0.1:8011/docs",
 } satisfies FakeCRMLabSnapshot;
 
 beforeEach(() => {
@@ -106,7 +107,7 @@ test("renders synthetic provenance, pipeline, and operational controls", async (
   ).toBeEnabled();
   expect(
     screen.getByRole("link", { name: /Abrir contrato HTTP/i }),
-  ).toHaveAttribute("href", "http://127.0.0.1:8010/docs");
+  ).toHaveAttribute("href", "http://127.0.0.1:8011/docs");
 });
 
 test("executes a task and reports the operation without exposing credentials", async () => {

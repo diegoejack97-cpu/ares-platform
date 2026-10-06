@@ -16,7 +16,12 @@ import {
   PulseIcon,
   ShieldCheckIcon,
 } from "@phosphor-icons/react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -30,7 +35,7 @@ import { getOpportunities, getOpportunityAnalytics } from "./api";
 import { money, priorityLabels, signalLabels } from "./format";
 import { RiskDistributionChart } from "./risk-distribution-chart";
 import { ScoreBar } from "./score-bar";
-import type { OpportunityListItem } from "./types";
+import type { OpportunityListItem, OpportunityPage } from "./types";
 import "./radar-v2.css";
 import "./observatory-radar.css";
 
@@ -68,18 +73,36 @@ export function RadarPage() {
     queryFn: getOpportunityAnalytics,
     refetchInterval: 30_000,
   });
-  const query = useQuery({
+  const query = useInfiniteQuery<
+    OpportunityPage,
+    Error,
+    InfiniteData<OpportunityPage>,
+    readonly unknown[],
+    string | undefined
+  >({
     queryKey: ["opportunities", state, minScore],
-    queryFn: () =>
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    queryFn: ({ pageParam }) =>
       getOpportunities({
         state: state || undefined,
         minScore: minScore || undefined,
+        cursor: pageParam,
       }),
     placeholderData: keepPreviousData,
     structuralSharing: true,
     refetchInterval: 15_000,
   });
-  const items = query.data?.items ?? emptyItems;
+  const items = useMemo(() => {
+    if (!query.data) return emptyItems;
+    return [
+      ...new Map(
+        query.data.pages
+          .flatMap((page) => page.items)
+          .map((item) => [item.id, item]),
+      ).values(),
+    ];
+  }, [query.data]);
   const now = useLiveClock();
   const atRiskValue = useMemo(
     () =>
@@ -134,11 +157,24 @@ export function RadarPage() {
     [items],
   );
   const visibleItems = items.slice(0, visibleCount);
-  const hasMore = visibleCount < items.length;
+  const hasMore = visibleCount < items.length || query.hasNextPage;
+  const { isFetchingNextPage, hasNextPage, fetchNextPage } = query;
 
-  const revealNextBatch = useCallback(() => {
-    setVisibleCount((current) => Math.min(current + ROW_BATCH, items.length));
-  }, [items.length]);
+  const revealNextBatch = useCallback(async () => {
+    if (isFetchingNextPage) return;
+    if (visibleCount >= items.length && hasNextPage) {
+      await fetchNextPage();
+      setVisibleCount((current) => current + ROW_BATCH);
+    } else {
+      setVisibleCount((current) => Math.min(current + ROW_BATCH, items.length));
+    }
+  }, [
+    items.length,
+    visibleCount,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  ]);
 
   useEffect(() => {
     if (!hasMore || !loadMoreRef.current || !tableWrapRef.current) return;
@@ -303,7 +339,7 @@ export function RadarPage() {
             </div>
           </dl>
           <div className="console-source">
-            <span>Fonte · {query.data?.source ?? "ARES Core"}</span>
+            <span>Fonte · {query.data?.pages[0]?.source ?? "ARES Core"}</span>
             <span>Observação ≠ causalidade</span>
           </div>
         </article>
@@ -580,10 +616,17 @@ export function RadarPage() {
               <div className="radar-progressive-foot" aria-live="polite">
                 <span>
                   Exibindo {visibleItems.length} de {items.length} oportunidades
+                  {query.hasNextPage ? " carregadas (há mais na fila)" : ""}
                 </span>
                 {hasMore ? (
-                  <Button variant="ghost" onClick={revealNextBatch}>
-                    Carregar próximas 5
+                  <Button
+                    variant="ghost"
+                    onClick={() => void revealNextBatch()}
+                    disabled={query.isFetchingNextPage}
+                  >
+                    {query.isFetchingNextPage
+                      ? "Carregando fila…"
+                      : "Carregar próximas 5"}
                   </Button>
                 ) : (
                   <small>Fim da fila deste recorte</small>
@@ -593,8 +636,8 @@ export function RadarPage() {
           )}
           <div className="provenance queue-provenance">
             <span>
-              Fonte: {query.data?.source ?? "ARES Core"} · Recorte carregado da
-              API
+              Fonte: {query.data?.pages[0]?.source ?? "ARES Core"} · Recorte
+              carregado da API
             </span>
             <Freshness timestamp={query.dataUpdatedAt} />
           </div>
@@ -603,7 +646,7 @@ export function RadarPage() {
           <RiskDistributionChart
             items={items}
             freshness={query.dataUpdatedAt}
-            source={query.data?.source}
+            source={query.data?.pages[0]?.source}
             state={chartState}
             onRetry={() => void query.refetch()}
           />

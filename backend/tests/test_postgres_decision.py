@@ -221,6 +221,9 @@ def test_m3_http_contract_returns_409_and_executes_via_background_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert DATABASE_URL is not None
+    # This test exercises the optional development background runner explicitly;
+    # the operator's local .env may correctly disable it in favor of the daemon.
+    monkeypatch.setattr("ares.api.app.settings.background_execution", True)
     now = datetime.now(UTC)
     journal = PostgresEventJournal(DATABASE_URL, TENANT_ID)
     intelligence = IntelligenceService(DATABASE_URL, TENANT_ID)

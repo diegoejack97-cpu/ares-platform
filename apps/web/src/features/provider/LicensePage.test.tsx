@@ -259,6 +259,10 @@ test("quota notice distinguishes a zero budget from an 80% warning", async () =>
         warning: true,
         daily: "8.50",
         monthly: "40.00",
+        daily_reserved: "0.50",
+        reserved: "2.00",
+        daily_available: "1.00",
+        monthly_available: "58.00",
         ai_daily_budget_brl: "10.000000",
         ai_monthly_budget_brl: "100.000000",
       },
@@ -266,9 +270,12 @@ test("quota notice distinguishes a zero budget from an 80% warning", async () =>
   });
   mount(<QuotaNotice />);
   expect(
-    await screen.findByText(/atingiram pelo menos 80% do contrato/),
+    await screen.findByText(/Cota de IA perto do limite/),
   ).toBeInTheDocument();
-  expect(screen.getByText(/R\$\s8,50 hoje/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Hoje: R\$\s8,50 consumidos, R\$\s0,50 reservados/),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/R\$\s58,00 disponíveis/)).toBeInTheDocument();
   cleanup();
   serve({ "/quota": () => ({ body: { configured: false } }) });
   mount(<QuotaNotice />);

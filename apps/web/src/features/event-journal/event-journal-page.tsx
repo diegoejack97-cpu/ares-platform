@@ -34,7 +34,11 @@ const formatter = new Intl.DateTimeFormat("pt-BR", {
   timeStyle: "medium",
 });
 
-export function EventJournalPage() {
+export function EventJournalPage({
+  development = false,
+}: {
+  development?: boolean;
+}) {
   const queryClient = useQueryClient();
   const eventsQuery = useQuery({
     queryKey: ["journal-events"],
@@ -60,18 +64,20 @@ export function EventJournalPage() {
             leitura operacional.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => simulateMutation.mutate()}
-          disabled={simulateMutation.isPending}
-        >
-          {simulateMutation.isPending ? (
-            <ArrowClockwiseIcon className="animate-spin" aria-hidden />
-          ) : (
-            <PlayIcon weight="fill" aria-hidden />
-          )}
-          Simular evento
-        </Button>
+        {development ? (
+          <Button
+            type="button"
+            onClick={() => simulateMutation.mutate()}
+            disabled={simulateMutation.isPending}
+          >
+            {simulateMutation.isPending ? (
+              <ArrowClockwiseIcon className="animate-spin" aria-hidden />
+            ) : (
+              <PlayIcon weight="fill" aria-hidden />
+            )}
+            Simular evento
+          </Button>
+        ) : null}
       </header>
 
       <section className="status-rail" aria-label="Estado da fatia M1">
@@ -100,8 +106,7 @@ export function EventJournalPage() {
       {simulateMutation.isError && (
         <div className="inline-alert" role="alert">
           <WarningCircleIcon weight="fill" aria-hidden />
-          Não foi possível simular o evento. Confirme se a API FastAPI está em
-          http://localhost:8000.
+          Não foi possível simular o evento. Verifique a disponibilidade da API.
         </div>
       )}
 

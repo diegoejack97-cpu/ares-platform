@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ares.auth.models import AuthenticatedUser
 from ares.config import Settings
-from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
+from ares.connectors.http_fake_crm import CRMProviderRequestError
+from ares.connectors.resolver import crm_for
 from ares.integrations.service import IntegrationError
 from ares.leads.models import LeadCandidate, LeadInput, LeadPage, LeadRecord, LeadResolve
 from ares.leads.service import LeadService
@@ -17,23 +18,15 @@ def lead_router(settings: Settings, require_user: Callable[..., Any]) -> APIRout
     dependency = Depends(require_user)
 
     def run(user: AuthenticatedUser, operation: Callable[[LeadService], Any]) -> Any:
-        if settings.environment != "development" or user.tenant_id != settings.tenant_id:
-            raise HTTPException(503, detail={"code": "client_crm_adapter_not_configured"})
-        provider = FakeCRMHTTPProvider(
-            settings.fake_crm_base_url,
-            settings.fake_crm_api_key.get_secret_value(),
-            settings.fake_crm_timeout_seconds,
-        )
         try:
-            return operation(LeadService(settings.database_url, provider))
+            with crm_for(settings, user.tenant_id) as provider:
+                return operation(LeadService(settings.database_url, provider))
         except IntegrationError as error:
             raise HTTPException(
                 error.status, detail={"code": error.code, "correlation_id": error.correlation_id}
             ) from None
         except CRMProviderRequestError:
             raise HTTPException(503, detail={"code": "crm_unavailable"}) from None
-        finally:
-            provider.close()
 
     @router.get("", response_model=LeadPage)
     def listing(cursor: UUID | None = None, user: AuthenticatedUser = dependency) -> Any:

@@ -522,6 +522,10 @@ class SentinelService:
                     schedule["start_time_local"],
                     schedule["interval_minutes"],
                 )
+                # Drain a full bounded batch before waiting for the next scheduled slot.
+                # Deduplication prevents repeating findings; other overdue schedules stay ahead.
+                if created >= per_tenant_limit:
+                    next_run = datetime.now(UTC) + timedelta(seconds=10)
                 connection.execute(
                     """
                     update public.sentinel_schedules

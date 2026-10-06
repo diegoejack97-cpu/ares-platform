@@ -13,9 +13,9 @@ from psycopg.types.json import Jsonb
 
 from ares.auth.models import AuthenticatedUser
 from ares.connectors.provider import CRMProvider
+from ares.decision.execution_guard import ExecutionBlocked, execution_contract
 from ares.integrations.service import IntegrationError
 from ares.leads.models import LeadInput, LeadResolve, normalize_name
-from ares.provider.billing import billing_status
 
 
 class LeadService:
@@ -153,8 +153,6 @@ class LeadService:
             return self.candidates_on(db, user, self.row(db, user, id))
 
     def resolve(self, user: AuthenticatedUser, id: UUID, command: LeadResolve) -> dict[str, Any]:
-        if billing_status(self.url, user.tenant_id)["degraded"]:
-            raise IntegrationError("billing_degraded", 403)
         # The session lock spans CRM I/O; the write intent commits before the external call.
         with psycopg.connect(self.url, autocommit=True) as guard:
             key = f"lead-resolve:{user.tenant_id}"
@@ -162,7 +160,10 @@ class LeadService:
             if not acquired or not acquired[0]:
                 raise IntegrationError("write_in_progress", 409)
             try:
-                return self.resolve_locked(user, id, command)
+                with execution_contract(self.url, user.tenant_id):
+                    return self.resolve_locked(user, id, command)
+            except ExecutionBlocked as error:
+                raise IntegrationError(error.code, 403) from error
             finally:
                 guard.execute("select pg_advisory_unlock(hashtext(%s))", (key,))
 

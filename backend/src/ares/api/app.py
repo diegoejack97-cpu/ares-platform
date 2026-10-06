@@ -21,6 +21,7 @@ from ares.connectors.fake_crm import FakeCRMProvider
 from ares.connectors.fake_crm_lab import FakeCRMLabClient
 from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
 from ares.connectors.provider import CRMProvider
+from ares.connectors.resolver import TenantCRMProvider, webhook_for
 from ares.decision.authorization import DecisionAuthorizationError
 from ares.decision.models import DecideCommand
 from ares.decision.service import DecisionConflict, DecisionService
@@ -42,6 +43,7 @@ from ares.sentinels.models import (
     SentinelScheduleCommand,
 )
 from ares.sentinels.service import SentinelScheduleConflict, SentinelService
+from ares.workers.health import worker_ready
 from ares.workers.tick import TickWorker
 
 settings = get_settings()
@@ -88,6 +90,7 @@ app.add_middleware(
     allow_headers=[
         "Authorization",
         "Content-Type",
+        "Idempotency-Key",
         "X-ARES-Tick-Secret",
         "X-FakeCRM-Signature",
         "X-Correlation-Id",
@@ -149,8 +152,10 @@ async def require_user(
             raise HTTPException(
                 403,
                 detail={
-                    "code": "billing_degraded",
-                    "message": "Prazo encerrado. Leitura e histórico continuam disponíveis.",
+                    "code": "billing_unconfigured"
+                    if billing["state"] == "unconfigured"
+                    else "billing_degraded",
+                    "message": "Cobrança não liberada. Leitura e histórico continuam disponíveis.",
                     "correlation_id": str(uuid4()),
                 },
             )
@@ -201,7 +206,9 @@ def decisions_for(user: AuthenticatedUser) -> DecisionService:
     return DecisionService(
         settings.database_url,
         user.tenant_id,
-        crm_provider,
+        crm_provider
+        if settings.event_journal_backend == "memory"
+        else TenantCRMProvider(settings, user.tenant_id),
         openai_api_key=settings.openai_api_key.get_secret_value(),
         openai_model=settings.openai_model,
         estimated_cost_usd=Decimal(str(settings.recommendation_estimated_cost_usd)),
@@ -220,6 +227,8 @@ async def health_ready() -> HealthResponse:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="event_journal_unavailable",
         )
+    if settings.require_worker and not await asyncio.to_thread(worker_ready, settings):
+        raise HTTPException(503, detail="worker_unavailable")
     return HealthResponse(status="ready", service="ares-api")
 
 
@@ -233,10 +242,16 @@ async def receive_fake_crm_webhook(
     request: Request,
     x_fakecrm_signature: str | None = Header(default=None),
 ) -> AcceptedEvent:
-    del connection_id
     raw_body = await request.body()
-    incoming = fake_crm.verify_and_normalize(raw_body, x_fakecrm_signature)
-    return await journal.record(incoming)
+    if settings.event_journal_backend == "memory":
+        incoming = fake_crm.verify_and_normalize(raw_body, x_fakecrm_signature)
+        return await journal.record(incoming)
+    try:
+        tenant, secret = await asyncio.to_thread(webhook_for, settings, connection_id)
+    except CRMProviderRequestError as error:
+        raise HTTPException(error.status_code or 503, detail=error.code) from error
+    incoming = FakeCRMProvider(secret).verify_and_normalize(raw_body, x_fakecrm_signature)
+    return await PostgresEventJournal(settings.database_url, tenant).record(incoming)
 
 
 @app.get("/api/v1/journal/events", response_model=JournalPage)
@@ -582,16 +597,16 @@ async def create_recommendation(
 ) -> dict[str, Any]:
     if user.role == "auditor":
         raise HTTPException(403, detail={"code": "decision_actor_forbidden"})
-    if user.tenant_id != settings.tenant_id:
+    if user.tenant_id != settings.tenant_id and user.tenant_id not in settings.crm_connections:
         raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
     try:
         result = await decisions_for(user).create_recommendation(opportunity_id, str(user.user_id))
-        if result.get("intent_id"):
+        if result.get("intent_id") and settings.background_execution:
             worker = TickWorker(
                 settings.database_url,
                 settings.supabase_url,
                 settings.supabase_secret_key.get_secret_value(),
-                provider=crm_provider,
+                provider=crm_provider if settings.event_journal_backend == "memory" else None,
             )
             background_tasks.add_task(worker.run_once)
         return result
@@ -623,16 +638,16 @@ async def decide_recommendation(
 ) -> dict[str, Any]:
     if user.role == "auditor":
         raise HTTPException(403, detail={"code": "decision_actor_forbidden"})
-    if user.tenant_id != settings.tenant_id:
+    if user.tenant_id != settings.tenant_id and user.tenant_id not in settings.crm_connections:
         raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
     try:
         result = await decisions_for(user).decide(recommendation_id, command, str(user.user_id))
-        if result.get("intent_id"):
+        if result.get("intent_id") and settings.background_execution:
             worker = TickWorker(
                 settings.database_url,
                 settings.supabase_url,
                 settings.supabase_secret_key.get_secret_value(),
-                provider=crm_provider,
+                provider=crm_provider if settings.event_journal_backend == "memory" else None,
             )
             background_tasks.add_task(worker.run_once)
         return result
@@ -682,7 +697,7 @@ async def run_tick(x_ares_tick_secret: str | None = Header(default=None)) -> Tic
         settings.database_url,
         settings.supabase_url,
         settings.supabase_secret_key.get_secret_value(),
-        provider=crm_provider,
+        provider=crm_provider if settings.event_journal_backend == "memory" else None,
     )
     result = await asyncio.to_thread(worker.run_once)
     return TickResponse(

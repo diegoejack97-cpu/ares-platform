@@ -47,11 +47,13 @@ async function request<T>(
 export function getOpportunities(filters: {
   state?: string;
   minScore?: number;
+  cursor?: string;
 }): Promise<OpportunityPage> {
   const query = new URLSearchParams();
   if (filters.state) query.set("state", filters.state);
   if (filters.minScore !== undefined)
     query.set("min_score", String(filters.minScore));
+  if (filters.cursor) query.set("cursor", filters.cursor);
   const suffix = query.size ? `?${query.toString()}` : "";
   return request(`/api/v1/opportunities${suffix}`);
 }

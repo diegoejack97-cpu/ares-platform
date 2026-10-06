@@ -50,6 +50,7 @@ def account_router(settings: Settings, require_user: Callable[..., Any]) -> APIR
             "tenant_id": str(user.tenant_id),
             "company_name": str(tenant["name"]),
             "role": user.role,
+            "environment": settings.environment,
         }
 
     @router.get("/licenses", response_model=LicensePage)
@@ -90,8 +91,10 @@ def account_router(settings: Settings, require_user: Callable[..., Any]) -> APIR
                 (row["day"], user.tenant_id, row["day"].replace(day=1)),
             ).fetchone()
             pending = db.execute(
-                "select coalesce(sum(reserved_brl),0) reserved from public.ai_budget_reservations where tenant_id=%s and status='reserved'",
-                (user.tenant_id,),
+                "select coalesce(sum(reserved_brl) filter(where day=%s),0) daily_reserved, "
+                "coalesce(sum(reserved_brl),0) reserved from public.ai_budget_reservations "
+                "where tenant_id=%s and status='reserved'",
+                (row["day"], user.tenant_id),
             ).fetchone()
             assert usage and pending
             return {
@@ -99,7 +102,15 @@ def account_router(settings: Settings, require_user: Callable[..., Any]) -> APIR
                 **row,
                 **usage,
                 **pending,
-                "warning": usage["daily"] + pending["reserved"]
+                "daily_available": max(
+                    Decimal(0),
+                    row["ai_daily_budget_brl"] - usage["daily"] - pending["daily_reserved"],
+                ),
+                "monthly_available": max(
+                    Decimal(0),
+                    row["ai_monthly_budget_brl"] - usage["monthly"] - pending["reserved"],
+                ),
+                "warning": usage["daily"] + pending["daily_reserved"]
                 >= row["ai_daily_budget_brl"] * Decimal("0.8")
                 or usage["monthly"] + pending["reserved"]
                 >= row["ai_monthly_budget_brl"] * Decimal("0.8"),

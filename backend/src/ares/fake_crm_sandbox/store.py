@@ -1,8 +1,10 @@
 import base64
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from threading import Lock
 from time import monotonic
 from typing import Any
@@ -29,9 +31,49 @@ class DealSnapshot:
 
 
 class SandboxStore:
-    def __init__(self) -> None:
+    def __init__(self, state_path: Path | None = None) -> None:
         self._lock = Lock()
+        self._state_path: Path | None = None
+        self._idempotency: dict[str, tuple[str, SandboxWriteResult]] = {}
         self.reset()
+        self._state_path = state_path
+        if state_path and state_path.exists():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if state["version"] != 1:
+                raise ValueError("unsupported_sandbox_state")
+            self.deals = {item["id"]: SandboxDeal.model_validate(item) for item in state["deals"]}
+            for field in ("companies", "contacts", "activities", "tasks", "notes", "leads"):
+                setattr(self, field, state[field])
+            self._idempotency = {
+                key: (value[0], SandboxWriteResult.model_validate(value[1]))
+                for key, value in state["idempotency"].items()
+            }
+        elif state_path:
+            self._persist_locked()
+
+    def _persist_locked(self) -> None:
+        """Persist receipts before acknowledging writes; restart cannot erase idempotency."""
+        if self._state_path is None:
+            return
+        state = {
+            "version": 1,
+            "deals": [deal.model_dump(mode="json") for deal in self.deals.values()],
+            "idempotency": {
+                key: [fingerprint, receipt.model_dump(mode="json")]
+                for key, (fingerprint, receipt) in self._idempotency.items()
+            },
+            **{
+                field: getattr(self, field)
+                for field in ("companies", "contacts", "activities", "tasks", "notes", "leads")
+            },
+        }
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self._state_path.with_suffix(".tmp")
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(state, handle, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, self._state_path)
 
     def reset(self) -> dict[str, int]:
         seed = build_seed()
@@ -43,8 +85,9 @@ class SandboxStore:
             self.tasks: list[dict[str, Any]] = []
             self.notes: list[dict[str, Any]] = []
             self.leads: list[dict[str, Any]] = []
-            self._idempotency: dict[str, tuple[str, SandboxWriteResult]] = {}
+            self._idempotency = {}
             self._snapshots: dict[str, DealSnapshot] = {}
+            self._persist_locked()
         return self.counts()
 
     def counts(self) -> dict[str, int]:
@@ -64,11 +107,13 @@ class SandboxStore:
             if prior:
                 if prior[0] != fingerprint:
                     raise SandboxConflict("idempotency_key_reused_with_different_payload")
+                self._persist_locked()
                 return prior[1].model_copy(update={"duplicate": True})
             external_id = f"lead-{uuid4()}"
             self.leads.append({"id": external_id, **payload, "synthetic": True})
             result = SandboxWriteResult(external_id=external_id)
             self._idempotency[idempotency_key] = (fingerprint, result)
+            self._persist_locked()
             return result
 
     def list_deals(
@@ -147,6 +192,7 @@ class SandboxStore:
             if prior is not None:
                 if prior[0] != fingerprint:
                     raise SandboxConflict("idempotency_key_reused_with_different_payload")
+                self._persist_locked()
                 return prior[1].model_copy(update={"duplicate": True})
             target = self.tasks if kind == "task" else self.notes
             external_id = f"{kind}-{len(target) + 1:04d}"
@@ -161,6 +207,7 @@ class SandboxStore:
             )
             result = SandboxWriteResult(external_id=external_id)
             self._idempotency[idempotency_key] = (fingerprint, result)
+            self._persist_locked()
             return result
 
     def update_stage(
@@ -181,6 +228,7 @@ class SandboxStore:
             if prior is not None:
                 if prior[0] != fingerprint:
                     raise SandboxConflict("idempotency_key_reused_with_different_payload")
+                self._persist_locked()
                 return prior[1].model_copy(update={"duplicate": True})
             current = self.deals[deal_id]
             if expected_version is not None and current.version != expected_version:
@@ -194,6 +242,7 @@ class SandboxStore:
             )
             result = SandboxWriteResult(external_id=f"stage-{deal_id}-v{current.version + 1}")
             self._idempotency[idempotency_key] = (fingerprint, result)
+            self._persist_locked()
             return result
 
     @staticmethod

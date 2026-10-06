@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -24,7 +25,8 @@ from ares.fake_crm_sandbox.store import SandboxConflict, SandboxNotFound, Sandbo
 API_KEY = os.getenv("FAKE_CRM_SANDBOX_API_KEY", "local-sandbox-key")
 WEBHOOK_SECRET = os.getenv("FAKE_CRM_SANDBOX_WEBHOOK_SECRET", "local-dev-only-change-me")
 bearer = HTTPBearer(auto_error=False)
-store = SandboxStore()
+state_file = os.getenv("FAKE_CRM_STATE_FILE")
+store = SandboxStore(Path(state_file) if state_file else None)
 
 app = FastAPI(
     title="ARES FakeCRM HTTP Sandbox",

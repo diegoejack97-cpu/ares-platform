@@ -1,9 +1,32 @@
 from typing import Any
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from ares.api.app import app, get_fake_crm_lab, require_user
 from ares.auth.models import AuthenticatedUser
+from ares.connectors.fake_crm_lab import FakeCRMLabClient
+
+
+@pytest.mark.asyncio
+async def test_lab_contract_link_uses_configured_sandbox_address() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        payloads = {
+            "/health": {"status": "ok"},
+            "/v1/capabilities": {"read_deals": True},
+            "/v1/stages": {"items": []},
+            "/v1/deals": {"items": []},
+            "/v1/admin/state": {"counts": {"deals": 0}},
+        }
+        return httpx.Response(200, json=payloads[request.url.path])
+
+    lab = FakeCRMLabClient(
+        "http://127.0.0.1:8011/", "synthetic-key", transport=httpx.MockTransport(respond)
+    )
+    snapshot = await lab.snapshot()
+    assert snapshot["docs_url"] == "http://127.0.0.1:8011/docs"
+    assert "synthetic-key" not in str(snapshot)
 
 
 class StubLabClient:
@@ -102,6 +125,19 @@ def test_lab_rejects_anonymous_access() -> None:
     app.dependency_overrides.clear()
     client = TestClient(app)
     assert client.get("/api/v1/dev/fake-crm/lab").status_code == 401
+
+
+def test_lab_browser_write_accepts_idempotency_header_preflight() -> None:
+    response = TestClient(app).options(
+        "/api/v1/dev/fake-crm/lab/deals/deal-001/tasks",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,idempotency-key",
+        },
+    )
+    assert response.status_code == 200
+    assert "idempotency-key" in response.headers["access-control-allow-headers"].lower()
 
 
 def test_lab_rejects_non_admin_user() -> None:

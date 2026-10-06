@@ -19,8 +19,13 @@ from ares.ai.budget import AIBudgetGuard
 from ares.ai.models import DEFAULT_MODEL
 from ares.ai.usage import record_usage
 from ares.connectors.provider import CRMProvider
+from ares.connectors.resolver import TenantCRMProvider
 from ares.decision.authorization import DecisionAuthorizationError, role_can_decide
-from ares.decision.execution_guard import ExecutionBlocked, execution_contract
+from ares.decision.execution_guard import (
+    ExecutionBlocked,
+    check_execution_contract,
+    execution_contract,
+)
 from ares.decision.model_factory import RecommendationModelFactory
 from ares.decision.models import ActionDraft, DecideCommand
 from ares.decision.policy import PolicyEngine
@@ -87,6 +92,20 @@ class DecisionService:
             raise ValueError("opportunity_not_found")
         if role == "seller" and str(row["owner_user_id"]) != actor_id:
             raise DecisionAuthorizationError("opportunity_scope_forbidden")
+        self._require_contract(connection)
+
+    def _require_contract(self, connection: psycopg.Connection[Any]) -> None:
+        try:
+            check_execution_contract(connection, self._tenant_id)
+        except ExecutionBlocked as error:
+            raise DecisionAuthorizationError(error.code) from error
+
+    def _contract_block_reason(self, connection: psycopg.Connection[Any]) -> str | None:
+        try:
+            check_execution_contract(connection, self._tenant_id)
+        except ExecutionBlocked as error:
+            return error.code
+        return None
 
     @staticmethod
     def _authorize_decision(role: str | None, actor_id: str, row: dict[str, Any]) -> None:
@@ -96,12 +115,17 @@ class DecisionService:
             raise DecisionAuthorizationError("opportunity_scope_forbidden")
 
     def _decision_permissions(
-        self, row: dict[str, Any], actor_role: str | None, actor_id: str | None
+        self,
+        row: dict[str, Any],
+        actor_role: str | None,
+        actor_id: str | None,
+        execution_block_reason: str | None = None,
     ) -> dict[str, Any]:
         can_decide = False
         expiry = row.get("approval_expires_at", row.get("expires_at"))
         if (
             actor_id
+            and execution_block_reason is None
             and row.get("status") == "pending"
             and row.get("approval_status", "pending") == "pending"
             and row.get("policy_verdict") == "require_approval"
@@ -118,7 +142,7 @@ class DecisionService:
                 )
             except (DecisionAuthorizationError, ValueError, KeyError):
                 pass
-        return {**row, "can_decide": can_decide}
+        return {**row, "can_decide": can_decide, "execution_block_reason": execution_block_reason}
 
     async def can_request_recommendation(self, opportunity_id: UUID, actor_id: str) -> bool:
         return await asyncio.to_thread(
@@ -463,6 +487,7 @@ class DecisionService:
         self, recommendation_id: UUID, command: DecideCommand, actor_id: str
     ) -> dict[str, Any]:
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+            self._require_contract(connection)
             actor_role = self._actor_role(connection, actor_id, lock=True)
             if actor_role not in {"admin", "manager", "seller"}:
                 raise DecisionAuthorizationError()
@@ -652,6 +677,11 @@ class DecisionService:
                 return {"intent_id": intent_id, "status": "cancelled", "duplicate": True}
             facts = intent["facts_json"]
             deal_facts = facts.get("deal", {})
+            if isinstance(self._provider, TenantCRMProvider):
+                target_connection = deal_facts.get("connection_id")
+                self._provider.connection_id = (
+                    UUID(str(target_connection)) if target_connection else None
+                )
             deal_id = str(
                 (deal_facts.get("external_ref") or {}).get("id")
                 or deal_facts.get("external_id")
@@ -709,6 +739,8 @@ class DecisionService:
                     (self._tenant_id, intent["opportunity_id"]),
                 )
         payload = intent["action_payload"]
+        if isinstance(self._provider, TenantCRMProvider):
+            self._provider.correlation_id = str(intent["correlation_id"])
         try:
             with execution_contract(self._database_url, self._tenant_id) as authorization:
                 policy = self._policy.evaluate(
@@ -945,7 +977,8 @@ class DecisionService:
                 (self._tenant_id, recommendation_id),
             ).fetchone()
             role = self._actor_role(connection, actor_id) if row and actor_id else None
-        return self._decision_permissions(dict(row), role, actor_id) if row else None
+            reason = self._contract_block_reason(connection) if row else None
+        return self._decision_permissions(dict(row), role, actor_id, reason) if row else None
 
     async def list_approvals(self, actor_id: str | None = None) -> dict[str, Any]:
         return await asyncio.to_thread(self._list_approvals_sync, actor_id)
@@ -974,8 +1007,11 @@ class DecisionService:
                 (self._tenant_id,),
             ).fetchall()
             role = self._actor_role(connection, actor_id) if actor_id else None
+            reason = self._contract_block_reason(connection)
         return {
-            "items": [self._decision_permissions(dict(row), role, actor_id) for row in rows],
+            "items": [
+                self._decision_permissions(dict(row), role, actor_id, reason) for row in rows
+            ],
             "total": len(rows),
         }
 

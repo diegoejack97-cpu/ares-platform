@@ -54,6 +54,9 @@ export type QuotaStatus = {
   daily?: string;
   monthly?: string;
   reserved?: string;
+  daily_reserved?: string;
+  daily_available?: string;
+  monthly_available?: string;
   ai_daily_budget_brl?: string;
   ai_monthly_budget_brl?: string;
 };

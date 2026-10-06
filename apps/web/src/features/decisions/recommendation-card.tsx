@@ -174,11 +174,13 @@ export function RecommendationCard({
 
         {awaitingApproval && !canDecide && (
           <p className="decision-rationale" role="status">
-            {expired
-              ? "Esta aprovação expirou. Atualize a consulta."
-              : recommendation.approval_required_role === "manager"
-                ? "Esta ação exige aprovação de um gestor ou administrador."
-                : "Aprovação indisponível neste acesso. Atualize a consulta se sua permissão mudou."}
+            {recommendation.execution_block_reason
+              ? "Ações bloqueadas pelo contrato. Consulte a liberação de plano e cobrança da empresa."
+              : expired
+                ? "Esta aprovação expirou. Atualize a consulta."
+                : recommendation.approval_required_role === "manager"
+                  ? "Esta ação exige aprovação de um gestor ou administrador."
+                  : "Aprovação indisponível neste acesso. Atualize a consulta se sua permissão mudou."}
           </p>
         )}
 

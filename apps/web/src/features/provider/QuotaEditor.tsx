@@ -83,10 +83,10 @@ export function QuotaEditor({ data }: { data: TenantConfiguration }) {
           </div>
         ))}
         <p className="provider-note">
-          Há uma rotina de agente (follow-up e triagem) e uma sentinela (SLA)
-          disponíveis hoje. Zero desativa a respectiva rotina; capacidade acima
-          de um fica reservada para futuras rotinas, sem ativá-las
-          automaticamente.
+          A capacidade de sentinelas limita as regras ativas configuradas pela
+          empresa. Zero impede novas execuções. Aumentar o limite permite ativar
+          mais regras, sem criar ou ativar sentinelas automaticamente. A rotina
+          de agente disponível é follow-up e triagem.
         </p>
         <label htmlFor="rate-source">Fonte e data da taxa</label>
         <Input id="rate-source" {...form.register("rate_source")} />
