@@ -6,16 +6,16 @@ A ARES Platform é uma plataforma de inteligência comercial projetada para iden
 
 O objetivo não é vender apenas software. É localizar e recuperar valor que já existe no funil, mas se perde por demora, ausência de follow-up, propostas paradas, falta de responsável ou priorização incorreta.
 
-> **Status atual:** Sprints M1, M2 e M3 concluídas e validadas localmente em 2 de setembro de 2026.
+> **Status em 07/10/2026:** MVP do ARES Connect implementado e validado localmente para
+> demonstração assistida com dados sintéticos. A operação com dados de clientes depende
+> da homologação do CRM real e da validação do ambiente hospedado.
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Marco atual:** M6 implementada e verificada localmente — painel do provedor, cotas de IA em BRL,
-> licenças e cobrança com degradação, entrada de leads com deduplicação humana, Impacto ARES e
-> exportações (ver `docs/m6-implementation.md`); Command Center entregue em 18/09 sobre os mesmos
-> dados (ver `docs/command-center.md`). M4 e M5 seguem validadas apenas localmente sobre o
-> FakeCRM; a homologação com o CRM real do cliente, o operador real do provedor e a chave OpenAI
-> continuam pendentes.
+> **Última entrega:** correções de autorização/RLS, rate limit por usuário e empresa,
+> atualização de dependências, CSP, proteção de webhooks e paginação do Event Journal.
+> O projeto contém **22 migrations**, aplicadas no Supabase local. O pacote Docker de
+> demonstração foi reconstruído e verificado em ambiente isolado.
 
 ## Produtos e módulos
 
@@ -122,14 +122,14 @@ Essas capacidades são evolução do produto. O MVP não inclui reinforcement le
 
 ## Plano de desenvolvimento
 
-| Sprint | Objetivo |
-|---|---|
+| Sprint | Objetivo                                                                                          |
+| ------ | ------------------------------------------------------------------------------------------------- |
 | **M1** | Espinha dorsal: monorepo, migrations, RLS, Auth, Event Journal, contrato de intervenção e FakeCRM |
-| **M2** | Inteligência: Signal Engine, Opportunity Engine, score, contexto, Radar e detalhe |
-| **M3** | Decisão e ação: agentes, Policy, aprovação, execução idempotente e outcome |
-| **M4** | Integração real: adapter do CRM, sync, reconciliação e write-back |
-| **M5** | Conversa, grafo e transparência dos agentes |
-| **M6** | Multi-tenant, Impacto ARES, relatórios, exportações e piloto |
+| **M2** | Inteligência: Signal Engine, Opportunity Engine, score, contexto, Radar e detalhe                 |
+| **M3** | Decisão e ação: agentes, Policy, aprovação, execução idempotente e outcome                        |
+| **M4** | Integração real: adapter do CRM, sync, reconciliação e write-back                                 |
+| **M5** | Conversa, grafo e transparência dos agentes                                                       |
+| **M6** | Multi-tenant, Impacto ARES, relatórios, exportações e piloto                                      |
 
 Nenhuma credencial do CRM real é necessária para iniciar M1. O FakeCRM sustenta o desenvolvimento até a homologação do adapter do primeiro cliente.
 
@@ -194,50 +194,68 @@ Nunca publique no repositório:
 
 Segredos serão fornecidos por variáveis de ambiente e mecanismos seguros de CI/CD.
 
-## Situação do projeto
+## Situação do projeto — 07/10/2026
 
-- [x] arquitetura e stack definidas;
-- [x] PRD e critérios de aceite consolidados;
-- [x] modelo de dados canônico definido;
-- [x] plano M1–M6 fechado;
-- [x] backlog inicial preparado;
-- [x] monorepo inicializado;
-- [x] ambiente local configurado e reproduzível;
-- [ ] ambiente de homologação configurado;
-- [x] implementação da M1 concluída;
-- [x] primeira fatia vertical FakeCRM → Event Journal → interface validada;
-- [x] migrations e políticas RLS executadas localmente com Docker;
-- [x] Supabase Auth, tenant e membership integrados à interface;
-- [x] webhook HMAC, inbox/job, tick worker e correlação validados ponta a ponta;
-- [x] limite preventivo de custo de IA persistido e testado.
-- [x] Signal Engine com oito regras determinísticas e `rule_version` persistido;
-- [x] Opportunity Engine com consolidação por negócio, estado, owner e SLA;
-- [x] score versionado com quatro parcelas persistidas e explicáveis;
-- [x] Context Builder SQL com teto de 2.500 tokens, citações, hash e `context_ref` opaco;
-- [x] Radar operacional com prioridade, filtros, SLA vivo e gráfico ECharts sob demanda;
-- [x] detalhe com evidências clicáveis, timeline e fronteira explícita da M3;
-- [x] fluxo webhook → tick → sinais → oportunidade → contexto → API → interface validado.
-- [x] Model Factory Agno/OpenAI com output estruturado e fallback determinístico auditável;
-- [x] Triage e Follow-up Agent sem ferramentas de mutação;
-- [x] Policy Layer versionada com `allow`, `require_approval` e `deny`;
-- [x] `allow` limitado a `add_note` de baixo risco, com decisão sistêmica auditada; `create_task` exige aprovação humana e `update_stage` é bloqueado;
-- [x] recomendação, contraindicação, alternativa e confiança persistidas;
-- [x] fila humana com aprovar, editar antes de aprovar, rejeitar e conflito 409;
-- [x] `action_intent` idempotente, tentativas correlacionadas e worker FakeCRM;
-- [x] alvo de mutação resolvido exclusivamente por `context_ref`;
-- [x] `state_before_ref`, ação executada, executor, `state_after_ref` e outcome observado auditados;
-- [x] jornada M3 validada na API e no navegador, inclusive em viewport móvel.
-- [x] FakeCRM HTTP Sandbox independente com 60 oportunidades sintéticas reproduzíveis;
-- [x] adapter HTTP selecionável por ambiente e contract suite com cursor, idempotência, conflito e falhas;
-- [x] chat com streaming, grafo de evidências e tela de agentes com custo medido (M5);
-- [x] painel do provedor com identidade e sessão dedicadas, auditoria imutável e conflito de versão;
-- [x] cotas de IA em BRL com taxa congelada por reserva, reservas concorrentes e reconciliação;
-- [x] licenças por convite/ativação com limite garantido por trigger; cobrança com prazo e degradação que preserva leitura;
-- [x] entrada de leads idempotente, candidatos de duplicidade, mesclagem humana reversível e criação no FakeCRM;
-- [x] Impacto ARES com definições explícitas, exportação CSV/PDF auditada e piloto sintético local;
-- [x] Command Center: bloco Agora, Impacto ARES reutilizado, análises com tabela alternativa, trilha e definições;
-- [ ] operador real do provedor provisionado e moeda das cotas ratificada;
-- [ ] adapter, schema mapping, sync, reconciliação e write-back do CRM real homologados.
+### Capacidades implementadas
+
+| Área                        | Entrega e escopo confirmado                                                                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core, Radar e detalhe       | Sinais, oportunidades ARES, score explicável, contexto, evidências, responsável, SLA e fila priorizada.                                                                                                                 |
+| Funil e integração          | Contrato `CRMProvider`, FakeCRM HTTP, mapeamento, sincronização, reconciliação e movimentação humana com confirmação. O adapter homologado nos testes é o sandbox.                                                      |
+| Decisão e aprovação         | Recomendações estruturadas, Policy Layer, aprovação/edição/rejeição, controle de papel e validade, execução idempotente e outcome auditado.                                                                             |
+| Chat ARES                   | Streaming, respostas formatadas, consultas genéricas, comparações, continuidade entre perguntas e ferramentas de leitura com acesso revalidado. OpenAI real foi exercitado com dados sintéticos; não houve fine-tuning. |
+| Agentes e sentinelas        | Monitoramento, regras e agendamento de sentinelas, achados/notificações e execução por worker independente.                                                                                                             |
+| Administração da empresa    | Usuários, convites, licenças e permissões restritos à empresa. Command Center reúne a visão operacional da conta.                                                                                                       |
+| Central Admin da plataforma | Acesso separado para o dono do sistema; gestão de empresas, planos, vencimento, capacidades, cobrança e cotas de IA.                                                                                                    |
+| Leads e Impacto ARES        | Deduplicação e mesclagem humanas, criação no FakeCRM, métricas com atribuição explícita e exportações CSV/PDF auditadas.                                                                                                |
+| Isolamento e segurança      | Auth/RBAC/RLS, carteira própria do vendedor, conexão e segredos por empresa, rate limit, CSP e limite de corpo de 1 MB.                                                                                                 |
+| Operação e publicação       | Fila persistida, worker supervisionado, heartbeat/readiness e pacote Docker Compose em `deploy/`, com perfil de demonstração e dados sintéticos identificados.                                                          |
+
+M1–M3 e as capacidades locais de M5/M6 estão implementadas. A infraestrutura de M4 foi
+verificada com FakeCRM; **a integração com um CRM real permanece pendente**. O piloto de
+M6 realizado até aqui é sintético e local. ARES CRM nativo, STELLAR e demais capacidades
+evolutivas não representam produtos homologados nesta entrega.
+
+### Última validação
+
+Os números abaixo correspondem ao checkpoint de **07/10/2026**; são resultados locais,
+não uma certificação de produção ou garantia sobre qualquer implantação futura.
+
+| Verificação            | Resultado                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Backend sem integração | 188 testes aprovados                                                                                                        |
+| Integração PostgreSQL  | 86 testes aprovados                                                                                                         |
+| Frontend               | 99 testes aprovados                                                                                                         |
+| Contratos pgTAP        | 56 verificações aprovadas                                                                                                   |
+| Qualidade e build      | TypeScript, mypy, Ruff, formatação e build de produção aprovados; lint frontend sem erros, com nove avisos existentes       |
+| Dependências           | `npm audit` e `pip-audit` sem vulnerabilidades conhecidas; imagem backend reconstruída também verificada                    |
+| Containers e proxy     | Readiness 200, CSP aplicada, corpo acima de 1 MB rejeitado com 413 e documentação da API desativada fora de desenvolvimento |
+| Journal no navegador   | Paginação real de 50 eventos sem repetição, teclado e estados vazio/erro; desktop, tablet e celular conferidos              |
+
+Os padrões configuráveis de rate limit são **120 requisições**, **20 mutações** e
+**6 mensagens de chat por minuto**, por usuário e empresa. São token buckets, com
+capacidade de pico e reposição gradual; renovar a sessão não reinicia os contadores.
+Detalhes e limites operacionais estão no [relatório de correções de segurança](docs/security-hardening-2026-10-07.md).
+
+### Pendências para publicação e operação com clientes
+
+- [ ] Homologar o primeiro CRM real: adapter, credenciais, mapeamento, sync, reconciliação, conflitos e write-back.
+- [ ] Implantar e validar o ambiente hospedado: aplicar as 22 migrations, reconstruir serviços, configurar domínio/TLS, Auth, redirects, CORS, CSP e proxy confiável.
+- [ ] Provisionar o operador real da Central Admin e os administradores das empresas; verificar MFA, recuperação de conta e revogação/expiração de sessões.
+- [ ] Configurar monitoramento, limites de tráfego no edge, backups e ensaiar a restauração completa do ambiente hospedado.
+- [ ] Validar contas, planos, cobrança, capacidades, orçamento de IA e conexões de cada empresa no destino.
+- [ ] Executar o smoke pela URL publicada e o piloto com o CRM real antes de operar dados de clientes.
+
+O onboarding da demonstração é assistido. Cadastro público automático, homologação do
+CRM real e SaaS aberto ao público não foram declarados concluídos.
+
+### Relatórios e guia de publicação
+
+- [Preparação e publicação da demonstração](docs/presentation-release-2026-10-05.md).
+- [Verificação dos fluxos e botões](docs/flow-verification-2026-10-05.md).
+- [Evolução conversacional do chat](docs/chat-conversation-2026-10-06.md).
+- [Auditoria local de segurança — diagnóstico anterior às correções](docs/security-audit-2026-10-07.md).
+- [Correções de segurança e evidências finais](docs/security-hardening-2026-10-07.md).
 
 ---
 
