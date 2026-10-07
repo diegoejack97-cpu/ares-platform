@@ -87,6 +87,7 @@ services:
         VITE_SUPABASE_PUBLISHABLE_KEY: ${ARES_SUPABASE_PUBLISHABLE_KEY:?Publishable key required}
     environment:
       ARES_PUBLIC_HOST: ${ARES_PUBLIC_HOST:?Public hostname required}
+      ARES_SUPABASE_URL: ${ARES_SUPABASE_URL:?Supabase URL required}
     ports: ["80:80", "443:443", "443:443/udp"]
     volumes: [caddy_data:/data, caddy_config:/config]
     restart: unless-stopped

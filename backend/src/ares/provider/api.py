@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from typing import Any
 from uuid import UUID, uuid4
@@ -24,6 +25,7 @@ from ares.provider.models import (
 )
 from ares.provider.quotas import QuotaCommand, set_quota
 from ares.provider.service import ProviderConflict, ProviderDenied, ProviderMissing, ProviderService
+from ares.security.rate_limit import RequestLimiter
 
 
 class ProviderHTTPError(Exception):
@@ -31,7 +33,9 @@ class ProviderHTTPError(Exception):
         self.status, self.code = status, code
 
 
-def install_provider_api(app: FastAPI, settings: Settings) -> None:
+def install_provider_api(
+    app: FastAPI, settings: Settings, limiter: RequestLimiter | None = None
+) -> None:
     router = APIRouter(prefix="/api/v1/admin", tags=["M6 provider"])
     auth = ProviderAuth(settings)
     service = ProviderService(settings.database_url)
@@ -54,12 +58,18 @@ def install_provider_api(app: FastAPI, settings: Settings) -> None:
     app.add_exception_handler(ProviderHTTPError, error_handler)
 
     async def require_provider(
+        request: Request,
         credentials: HTTPAuthorizationCredentials | None = security_dependency,
     ) -> ProviderPrincipal:
         if credentials is None:
             raise ProviderHTTPError(401, "provider_session_required")
         try:
-            return await auth.authenticate(credentials.credentials)
+            principal = await auth.authenticate(credentials.credentials)
+            if limiter is not None:
+                await asyncio.to_thread(
+                    limiter.enforce, principal.user_id, None, request.url.path, request.method
+                )
+            return principal
         except ProviderDenied:
             raise ProviderHTTPError(403, "provider_access_denied") from None
         except (psycopg.Error, httpx.HTTPError):

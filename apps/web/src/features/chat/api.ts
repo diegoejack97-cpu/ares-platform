@@ -6,15 +6,22 @@ export class ChatError extends Error {
   status: number;
   code: string;
   correlationId?: string;
-  constructor(status: number, code: string, correlationId?: string) {
+  constructor(
+    status: number,
+    code: string,
+    correlationId?: string,
+    retryAfter?: number,
+  ) {
     super(
-      code === "ai_budget_exceeded"
-        ? "Limite de IA atingido. Revise a cota antes de enviar."
-        : code === "chat_busy"
-          ? "Há uma resposta em andamento nesta conversa. Atualize a leitura."
-          : status === 404 || status === 403
-            ? "Chat indisponível neste acesso."
-            : "Não foi possível concluir a consulta. Tente novamente.",
+      code === "request_rate_limited"
+        ? `Muitas mensagens ou solicitações. Aguarde ${retryAfter ?? 60} segundos antes de tentar novamente.`
+        : code === "ai_budget_exceeded"
+          ? "Limite de IA atingido. Revise a cota antes de enviar."
+          : code === "chat_busy"
+            ? "Há uma resposta em andamento nesta conversa. Atualize a leitura."
+            : status === 404 || status === 403
+              ? "Chat indisponível neste acesso."
+              : "Não foi possível concluir a consulta. Tente novamente.",
     );
     this.status = status;
     this.code = code;
@@ -34,8 +41,9 @@ async function check(response: Response) {
     const body = await response.json().catch(() => ({}));
     throw new ChatError(
       response.status,
-      body.error?.code ?? "chat_failed",
-      body.error?.correlation_id,
+      body.error?.code ?? body.detail?.code ?? "chat_failed",
+      body.error?.correlation_id ?? body.detail?.correlation_id,
+      Number(response.headers.get("Retry-After")) || undefined,
     );
   }
 }

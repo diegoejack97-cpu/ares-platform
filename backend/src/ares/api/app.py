@@ -1,13 +1,16 @@
 import asyncio
 import json
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
+import psycopg
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -35,6 +38,9 @@ from ares.leads.api import lead_router
 from ares.provider.account import account_router
 from ares.provider.api import install_provider_api
 from ares.provider.billing import billing_status
+from ares.security.body_limit import BodyLimitMiddleware
+from ares.security.rate_limit import RateLimited, RequestLimiter
+from ares.security.traffic_limit import TrafficLimitMiddleware
 from ares.sentinels.models import (
     SentinelArchiveCommand,
     SentinelCatalog,
@@ -81,7 +87,11 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs" if settings.environment == "development" else None,
     redoc_url=None,
+    openapi_url="/openapi.json" if settings.environment == "development" else None,
 )
+request_limiter = RequestLimiter(settings)
+app.add_middleware(BodyLimitMiddleware)
+app.add_middleware(TrafficLimitMiddleware, requests_per_minute=settings.rate_limit_ip_per_minute)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
@@ -95,7 +105,28 @@ app.add_middleware(
         "X-FakeCRM-Signature",
         "X-Correlation-Id",
     ],
+    expose_headers=["Retry-After", "X-Correlation-Id"],
 )
+
+
+@app.exception_handler(RateLimited)
+async def rate_limit_error(request: Request, error: RateLimited) -> JSONResponse:
+    correlation = str(uuid4())
+    return JSONResponse(
+        status_code=429,
+        headers={
+            "Retry-After": str(error.retry_after),
+            "Cache-Control": "no-store",
+            "X-Correlation-Id": correlation,
+        },
+        content={
+            "detail": {
+                "code": "request_rate_limited",
+                "message": "Muitas solicitações. Aguarde e tente novamente.",
+                "correlation_id": correlation,
+            }
+        },
+    )
 
 
 class HealthResponse(BaseModel):
@@ -142,6 +173,12 @@ async def require_user(
     user = await auth_service.authenticate(credentials.credentials)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_session")
+    try:
+        await asyncio.to_thread(
+            request_limiter.enforce, user.user_id, user.tenant_id, request.url.path, request.method
+        )
+    except psycopg.Error:
+        raise HTTPException(503, detail="request_limiter_unavailable") from None
     if not request.url.path.startswith("/api/v1/account/"):
         allowed = await asyncio.to_thread(auth_service.has_connect_access, user.tenant_id)
         if not allowed:
@@ -171,7 +208,7 @@ app.include_router(chat_router(settings, require_user))
 app.include_router(impact_router(settings, require_user))
 app.include_router(command_center_router(settings, require_user))
 app.include_router(lead_router(settings, require_user))
-install_provider_api(app, settings)
+install_provider_api(app, settings, request_limiter)
 app.include_router(account_router(settings, require_user))
 
 
@@ -242,26 +279,36 @@ async def receive_fake_crm_webhook(
     request: Request,
     x_fakecrm_signature: str | None = Header(default=None),
 ) -> AcceptedEvent:
-    raw_body = await request.body()
+    if not x_fakecrm_signature or not re.fullmatch(r"sha256=[0-9a-fA-F]{64}", x_fakecrm_signature):
+        raise HTTPException(401, detail="invalid_webhook_signature")
     if settings.event_journal_backend == "memory":
+        raw_body = await request.body()
         incoming = fake_crm.verify_and_normalize(raw_body, x_fakecrm_signature)
         return await journal.record(incoming)
     try:
         tenant, secret = await asyncio.to_thread(webhook_for, settings, connection_id)
     except CRMProviderRequestError as error:
         raise HTTPException(error.status_code or 503, detail=error.code) from error
+    raw_body = await request.body()
     incoming = FakeCRMProvider(secret).verify_and_normalize(raw_body, x_fakecrm_signature)
     return await PostgresEventJournal(settings.database_url, tenant).record(incoming)
 
 
 @app.get("/api/v1/journal/events", response_model=JournalPage)
-async def list_journal_events(_user: CurrentUser) -> JournalPage:
+async def list_journal_events(
+    _user: CurrentUser,
+    limit: int = Query(50, ge=1, le=100),
+    cursor: str | None = Query(None, max_length=512),
+) -> JournalPage:
     scoped = (
         journal
-        if _user.tenant_id == settings.tenant_id
-        else PostgresEventJournal(settings.database_url, _user.tenant_id)
+        if settings.event_journal_backend == "memory"
+        else PostgresEventJournal(settings.database_url, _user.tenant_id, reader=_user)
     )
-    return await scoped.list_events()
+    try:
+        return await scoped.list_events(limit=limit, cursor=cursor)
+    except ValueError:
+        raise HTTPException(400, detail="invalid_cursor") from None
 
 
 @app.post(
@@ -431,11 +478,7 @@ async def test_fake_crm_lab_fault(
 @app.get("/api/v1/opportunities/analytics")
 async def opportunity_analytics(user: CurrentUser) -> dict[str, Any]:
     """Aggregates over every opportunity, so charts and agents share one population."""
-    service = (
-        intelligence
-        if intelligence is not None and user.tenant_id == settings.tenant_id
-        else IntelligenceService(settings.database_url, user.tenant_id)
-    )
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
     return await service.opportunity_analytics()
 
 
@@ -445,7 +488,7 @@ async def list_sentinels(
     limit: int = Query(default=25, ge=1, le=50),
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
-        SentinelService(settings.database_url).list_sync, user.tenant_id, limit=limit
+        SentinelService(settings.database_url).list_sync, user.tenant_id, limit=limit, reader=user
     )
 
 
@@ -546,11 +589,7 @@ async def list_opportunities(
     cursor: str | None = None,
     limit: int = Query(default=25, ge=1, le=100),
 ) -> dict[str, Any]:
-    service = (
-        intelligence
-        if intelligence is not None and user.tenant_id == settings.tenant_id
-        else IntelligenceService(settings.database_url, user.tenant_id)
-    )
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
     try:
         return await service.list_opportunities(
             state=state_filter,
@@ -566,11 +605,7 @@ async def list_opportunities(
 
 @app.get("/api/v1/opportunities/{opportunity_id}")
 async def get_opportunity(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
-    service = (
-        intelligence
-        if intelligence is not None and user.tenant_id == settings.tenant_id
-        else IntelligenceService(settings.database_url, user.tenant_id)
-    )
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
     result = await service.get_opportunity(opportunity_id)
     if result is None:
         raise HTTPException(status_code=404, detail="opportunity_not_found")
@@ -677,11 +712,7 @@ async def get_action(intent_id: UUID, user: CurrentUser) -> dict[str, Any]:
 
 @app.get("/api/v1/opportunities/{opportunity_id}/context")
 async def get_opportunity_context(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
-    service = (
-        intelligence
-        if intelligence is not None and user.tenant_id == settings.tenant_id
-        else IntelligenceService(settings.database_url, user.tenant_id)
-    )
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
     result = await service.get_context(opportunity_id)
     if result is None:
         raise HTTPException(status_code=404, detail="opportunity_context_not_found")

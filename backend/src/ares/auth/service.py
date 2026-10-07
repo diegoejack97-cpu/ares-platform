@@ -15,7 +15,7 @@ class SupabaseAuthService:
         self._database_url = database_url
 
     async def authenticate(self, access_token: str) -> AuthenticatedUser | None:
-        if not self._publishable_key:
+        if not self._publishable_key or not access_token or len(access_token) > 16_384:
             return None
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(

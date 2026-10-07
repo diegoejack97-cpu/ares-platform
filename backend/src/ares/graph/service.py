@@ -3,9 +3,9 @@ from typing import Any
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import dict_row
 
 from ares.auth.models import AuthenticatedUser
+from ares.auth.read_scope import read_connection
 from ares.graph.projector import node_id
 
 
@@ -18,8 +18,7 @@ class GraphService:
         self.database_url = database_url
 
     def read(self, user: AuthenticatedUser, opportunity: UUID, depth: int = 2) -> dict[str, Any]:
-        with psycopg.connect(self.database_url, row_factory=dict_row) as db:
-            db.execute("set transaction isolation level repeatable read, read only")
+        with read_connection(self.database_url, user) as db:
             db.execute("set local statement_timeout='5s'")
             return self.read_on(db, user, opportunity, depth)
 
@@ -37,6 +36,8 @@ class GraphService:
             "join public.tenants t on t.id=o.tenant_id "
             "join public.memberships m on m.tenant_id=o.tenant_id and m.user_id=%s "
             "where o.tenant_id=%s and o.id=%s and m.active and t.status='active' "
+            "and (m.role in ('admin','manager','auditor') or "
+            "(m.role='seller' and o.owner_user_id=m.user_id)) "
             "and exists(select 1 from public.tenant_entitlements e where e.tenant_id=o.tenant_id "
             "and e.module='ares_connect' and e.status='active' "
             "and (e.expires_at is null or e.expires_at>now()))",

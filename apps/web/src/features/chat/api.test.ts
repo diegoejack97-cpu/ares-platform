@@ -52,3 +52,35 @@ test("an abruptly closed response is not reported as complete", async () => {
     sendChat("scope", "question", new AbortController().signal, () => {}),
   ).rejects.toMatchObject({ code: "stream_interrupted" });
 });
+
+test("request rate limit explains the wait and preserves correlation", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            detail: {
+              code: "request_rate_limited",
+              correlation_id: "synthetic-correlation",
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "17",
+            },
+          },
+        ),
+    ),
+  );
+  await expect(
+    sendChat(undefined, "question", new AbortController().signal, () => {}),
+  ).rejects.toMatchObject({
+    status: 429,
+    code: "request_rate_limited",
+    correlationId: "synthetic-correlation",
+    message: expect.stringContaining("17 segundos"),
+  });
+});

@@ -71,9 +71,23 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = DEFAULT_MODEL
     recommendation_estimated_cost_usd: float = 0.01
+    rate_limit_requests_per_minute: int = 120
+    rate_limit_writes_per_minute: int = 20
+    rate_limit_chat_per_minute: int = 6
+    rate_limit_ip_per_minute: int = 600
 
     @model_validator(mode="after")
     def reject_development_secret_outside_development(self) -> "Settings":
+        if (
+            min(
+                self.rate_limit_requests_per_minute,
+                self.rate_limit_writes_per_minute,
+                self.rate_limit_chat_per_minute,
+                self.rate_limit_ip_per_minute,
+            )
+            < 1
+        ):
+            raise ValueError("Request rate limits must be positive")
         if self.worker_poll_seconds < 1 or self.worker_stale_seconds < 30:
             raise ValueError("invalid_worker_interval")
         if self.environment not in {"development", "demonstration", "staging", "production"}:

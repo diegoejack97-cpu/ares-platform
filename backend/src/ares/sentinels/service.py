@@ -11,6 +11,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ares.auth.models import AuthenticatedUser
 from ares.sentinels.models import SentinelRuleCommand, SentinelScheduleCommand
 
 RULE_ID = "SENTINEL-SLA-OVERDUE"
@@ -543,10 +544,33 @@ class SentinelService:
                 )
         return total
 
-    def list_sync(self, tenant_id: UUID, *, limit: int = 25) -> dict[str, Any]:
+    def list_sync(
+        self, tenant_id: UUID, *, limit: int = 25, reader: AuthenticatedUser | None = None
+    ) -> dict[str, Any]:
         """Return current findings and the evidence captured when each fired."""
         with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
             connection.execute("set local statement_timeout='5s'")
+            owner = None
+            if reader is not None:
+                membership = connection.execute(
+                    "select m.role::text role from public.memberships m "
+                    "join public.tenants t on t.id=m.tenant_id "
+                    "where m.tenant_id=%s and m.user_id=%s and m.active and t.status='active' "
+                    "and exists(select 1 from public.tenant_entitlements e "
+                    "where e.tenant_id=t.id and e.module='ares_connect' and e.status='active' "
+                    "and (e.expires_at is null or e.expires_at>now()))",
+                    (tenant_id, reader.user_id),
+                ).fetchone()
+                if membership is None or reader.tenant_id != tenant_id:
+                    return {
+                        "items": [],
+                        "truncated": False,
+                        "source": "ARES Core",
+                        "freshness_at": datetime.now(UTC),
+                        "checked_at": None,
+                    }
+                if membership["role"] == "seller":
+                    owner = reader.user_id
             rows = connection.execute(
                 """
                 select f.id, f.opportunity_id, f.rule_id, f.rule_version,
@@ -569,6 +593,7 @@ class SentinelService:
                 left join public.deals d
                   on d.tenant_id=o.tenant_id and d.id=o.deal_id
                 where f.tenant_id=%s and o.state<>'closed'
+                  and (%s::uuid is null or o.owner_user_id=%s)
                   and s.enabled and s.archived_at is null
                   and case s.kind
                     when 'sla_overdue' then
@@ -583,7 +608,7 @@ class SentinelService:
                   and f.due_at<=now()
                 order by f.detected_at desc, f.id limit %s
                 """,
-                (tenant_id, limit + 1),
+                (tenant_id, owner, owner, limit + 1),
             ).fetchall()
             scan = connection.execute(
                 """

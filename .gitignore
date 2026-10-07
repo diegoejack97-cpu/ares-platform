@@ -8,6 +8,7 @@ dist/
 .vite/
 coverage/
 playwright-report/
+.playwright-cli/
 test-results/
 output/
 

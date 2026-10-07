@@ -9,7 +9,10 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ares.auth.models import AuthenticatedUser
+from ares.auth.read_scope import read_connection
 from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalEvent, JournalPage
+from ares.event_journal.pagination import decode_cursor, encode_cursor, validate_limit
 
 
 class EventJournal(Protocol):
@@ -17,7 +20,7 @@ class EventJournal(Protocol):
         self, incoming: IncomingCRMEvent, correlation_id: UUID | None = None
     ) -> AcceptedEvent: ...
 
-    async def list_events(self) -> JournalPage: ...
+    async def list_events(self, *, limit: int = 50, cursor: str | None = None) -> JournalPage: ...
 
     async def clear(self) -> None: ...
 
@@ -59,9 +62,21 @@ class InMemoryEventJournal:
                 correlation_id=event.correlation_id,
             )
 
-    async def list_events(self) -> JournalPage:
-        events = sorted(self._events.values(), key=lambda item: item.recorded_at, reverse=True)
-        return JournalPage(items=events, total=len(events))
+    async def list_events(self, *, limit: int = 50, cursor: str | None = None) -> JournalPage:
+        validate_limit(limit)
+        position = decode_cursor(cursor)
+        events = sorted(
+            self._events.values(), key=lambda item: (item.recorded_at, item.id), reverse=True
+        )
+        total = len(events)
+        if position is not None:
+            events = [item for item in events if (item.recorded_at, item.id) < position]
+        items = events[:limit]
+        return JournalPage(
+            items=items,
+            total=total,
+            next_cursor=encode_cursor(items[-1]) if len(events) > limit else None,
+        )
 
     async def clear(self) -> None:
         async with self._lock:
@@ -74,9 +89,12 @@ class InMemoryEventJournal:
 class PostgresEventJournal:
     """Canonical Event Journal persisted in the Supabase PostgreSQL database."""
 
-    def __init__(self, database_url: str, tenant_id: UUID) -> None:
+    def __init__(
+        self, database_url: str, tenant_id: UUID, *, reader: AuthenticatedUser | None = None
+    ) -> None:
         self._database_url = database_url
         self._tenant_id = tenant_id
+        self._reader = reader
 
     async def record(
         self, incoming: IncomingCRMEvent, correlation_id: UUID | None = None
@@ -154,11 +172,17 @@ class PostgresEventJournal:
                 correlation_id=existing["correlation_id"],
             )
 
-    async def list_events(self) -> JournalPage:
-        return await asyncio.to_thread(self._list_events_sync)
+    async def list_events(self, *, limit: int = 50, cursor: str | None = None) -> JournalPage:
+        return await asyncio.to_thread(self._list_events_sync, limit, cursor)
 
-    def _list_events_sync(self) -> JournalPage:
-        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+    def _list_events_sync(self, limit: int = 50, cursor: str | None = None) -> JournalPage:
+        validate_limit(limit)
+        position = decode_cursor(cursor)
+        with read_connection(self._database_url, self._reader) as connection:
+            total = connection.execute(
+                "select count(*) count from public.commercial_events where tenant_id=%s",
+                (self._tenant_id,),
+            ).fetchone()
             rows = connection.execute(
                 """
                 select
@@ -166,12 +190,24 @@ class PostgresEventJournal:
                   correlation_id, source, producer, occurred_at, recorded_at, data
                 from public.commercial_events
                 where tenant_id = %s
-                order by recorded_at desc
+                  and (%s::timestamptz is null or (recorded_at,id)<(%s,%s))
+                order by recorded_at desc,id desc limit %s
                 """,
-                (self._tenant_id,),
+                (
+                    self._tenant_id,
+                    position[0] if position else None,
+                    position[0] if position else None,
+                    position[1] if position else None,
+                    limit + 1,
+                ),
             ).fetchall()
-        events = [JournalEvent(status="recorded", **row) for row in rows]
-        return JournalPage(items=events, total=len(events), source="Supabase/PostgreSQL local")
+        events = [JournalEvent(status="recorded", **row) for row in rows[:limit]]
+        return JournalPage(
+            items=events,
+            total=int(total["count"] if total else 0),
+            next_cursor=encode_cursor(events[-1]) if len(rows) > limit else None,
+            source="Supabase/PostgreSQL",
+        )
 
     async def clear(self) -> None:
         await asyncio.to_thread(self._clear_sync)

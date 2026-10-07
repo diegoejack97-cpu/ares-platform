@@ -10,10 +10,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function getJournalEvents(): Promise<JournalPage> {
+export async function getJournalEvents(cursor?: string): Promise<JournalPage> {
   const headers = await authorizationHeaders();
+  const params = new URLSearchParams({ limit: "50" });
+  if (cursor) params.set("cursor", cursor);
   return parseResponse<JournalPage>(
-    await fetch(`${API_URL}/api/v1/journal/events`, { headers }),
+    await fetch(`${API_URL}/api/v1/journal/events?${params}`, { headers }),
   );
 }
 

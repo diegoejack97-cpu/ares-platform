@@ -1,5 +1,7 @@
 # ARES — preparação da apresentação desta semana
 
+Atualização de 07/10: o projeto agora contém **22 migrations**. Aplicar também a migration de [correções de segurança](security-hardening-2026-10-07.md) antes de iniciar o código atual. Os resultados de 05–06/10 abaixo permanecem como histórico.
+
 Esta entrega prepara uma **demonstração assistida com dados sintéticos**. O pacote de publicação está em `deploy/`. A homologação de um CRM real continua obrigatória antes de operar dados de clientes. Este documento complementa a [verificação dos fluxos](flow-verification-2026-10-05.md); os resultados antigos permanecem como histórico.
 
 ## Correções implementadas
@@ -39,7 +41,7 @@ No ambiente local existente, as 21 migrations estão aplicadas, a API usa worker
 
 ## Publicar a demonstração
 
-1. Prepare um servidor com Docker Compose, domínio/DNS e portas 80/443, e um projeto Supabase separado para a demonstração. Aplique as **21 migrations** sem executar reset em bases com dados.
+1. Prepare um servidor com Docker Compose, domínio/DNS e portas 80/443, e um projeto Supabase separado para a demonstração. Aplique as **22 migrations** sem executar reset em bases com dados.
 2. Crie contas verificadas no Supabase Auth para o dono da plataforma e o administrador da empresa de demonstração. Não use credenciais locais na internet. O dono não deve ter membership de empresa: sua sessão pertence à Central Admin.
 3. Registre somente a conta do dono em `private.provider_operators`, por acesso administrativo ao banco, com motivo explícito. Essa tabela não pode ser gerida por um administrador de empresa. A configuração inicial é um procedimento assistido; não há promoção automática.
 4. Copie `deploy/.env.example` para `deploy/.env` e substitua os placeholders. Configure Supabase, domínio, CORS, segredos aleatórios com pelo menos 24 caracteres e manifesto de conexões. Apenas URL/chave **pública** do Supabase entram no build do site. Os demais segredos ficam no servidor. Não execute `docker compose config` com saída em logs compartilhados, pois ele pode expandir o env.

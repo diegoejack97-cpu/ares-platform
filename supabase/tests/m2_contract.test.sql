@@ -25,11 +25,13 @@ insert into public.tenants (id, name, slug) values ('22000000-0000-0000-0000-000
 insert into public.tenant_quotas (tenant_id, seats_limit, ai_daily_budget_brl, ai_monthly_budget_brl, usd_brl_rate, rate_source, updated_by)
 values ('22000000-0000-0000-0000-000000000001', 10, 0, 0, 1, 'pgtap synthetic', '12000000-0000-0000-0000-000000000001');
 insert into public.memberships (tenant_id, user_id, role) values ('22000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000001', 'seller');
+insert into public.tenant_entitlements (tenant_id,module,status,granted_by)
+values ('22000000-0000-0000-0000-000000000001','ares_connect','active','12000000-0000-0000-0000-000000000001');
 insert into public.commercial_events (id, tenant_id, event_type, producer, aggregate_type, aggregate_id, correlation_id, actor_type, source, occurred_at, payload_hash)
 values ('42000000-0000-0000-0000-000000000001', '22000000-0000-0000-0000-000000000001', 'deal.updated', 'test', 'deal', 'm2-deal', '52000000-0000-0000-0000-000000000001', 'external_system', 'crm', now(), 'hash');
 insert into public.deals (id, tenant_id, title, external_id) values ('62000000-0000-0000-0000-000000000001', '22000000-0000-0000-0000-000000000001', 'M2 Deal', 'm2-deal');
-insert into public.ares_opportunities (id, tenant_id, deal_id, opportunity_type, state, correlation_id)
-values ('72000000-0000-0000-0000-000000000001', '22000000-0000-0000-0000-000000000001', '62000000-0000-0000-0000-000000000001', 'revenue_recovery', 'prioritized', '52000000-0000-0000-0000-000000000001');
+insert into public.ares_opportunities (id, tenant_id, deal_id, opportunity_type, state, correlation_id, owner_user_id)
+values ('72000000-0000-0000-0000-000000000001', '22000000-0000-0000-0000-000000000001', '62000000-0000-0000-0000-000000000001', 'revenue_recovery', 'prioritized', '52000000-0000-0000-0000-000000000001', '12000000-0000-0000-0000-000000000001');
 insert into public.signals (tenant_id, event_id, opportunity_id, signal_type, rule_id, rule_version, severity, correlation_id)
 values ('22000000-0000-0000-0000-000000000001', '42000000-0000-0000-0000-000000000001', '72000000-0000-0000-0000-000000000001', 'test', 'SIG-TEST', 'm2.1', 3, '52000000-0000-0000-0000-000000000001');
 insert into public.opportunity_score_snapshots (tenant_id, opportunity_id, score_version, total_score, breakdown, input_hash, correlation_id)
@@ -37,8 +39,8 @@ values ('22000000-0000-0000-0000-000000000001', '72000000-0000-0000-0000-0000000
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"12000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"active_tenant_id":"22000000-0000-0000-0000-000000000001"}}', true);
-select results_eq('select count(*) from public.signals', array[1::bigint], 'member reads tenant signals');
-select results_eq('select count(*) from public.opportunity_score_snapshots', array[1::bigint], 'member reads tenant score history');
+select results_eq('select count(*) from public.signals', array[1::bigint], 'seller reads own signals with active plan');
+select results_eq('select count(*) from public.opportunity_score_snapshots', array[1::bigint], 'seller reads own score history with active plan');
 
 select set_config('request.jwt.claims', '{"sub":"12000000-0000-0000-0000-000000000002","role":"authenticated","app_metadata":{"active_tenant_id":"22000000-0000-0000-0000-000000000001"}}', true);
 select results_eq('select count(*) from public.signals', array[0::bigint], 'outsider cannot read signals');

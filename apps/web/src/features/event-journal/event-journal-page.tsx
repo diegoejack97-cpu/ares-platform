@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowClockwiseIcon,
@@ -40,15 +40,19 @@ export function EventJournalPage({
   development?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const cursor = cursors[cursors.length - 1];
   const eventsQuery = useQuery({
-    queryKey: ["journal-events"],
-    queryFn: getJournalEvents,
-    refetchInterval: 10_000,
+    queryKey: ["journal-events", cursor],
+    queryFn: () => getJournalEvents(cursor),
+    refetchInterval: cursor ? false : 10_000,
   });
   const simulateMutation = useMutation({
     mutationFn: simulateFakeCRMEvent,
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["journal-events"] }),
+    onSuccess: () => {
+      setCursors([undefined]);
+      void queryClient.invalidateQueries({ queryKey: ["journal-events"] });
+    },
   });
 
   const events = eventsQuery.data?.items ?? [];
@@ -86,7 +90,7 @@ export function EventJournalPage({
           <strong>{eventsQuery.data?.source ?? "FakeCRM local"}</strong>
         </div>
         <div>
-          <span>Eventos persistidos</span>
+          <span>Eventos no seu acesso</span>
           <strong className="tabular">
             <LiveValue value={eventsQuery.data?.total ?? 0} />
           </strong>
@@ -123,6 +127,8 @@ export function EventJournalPage({
                 freshness={eventsQuery.dataUpdatedAt}
                 state={eventsQuery.isError ? "error" : "ready"}
                 onRetry={() => void eventsQuery.refetch()}
+                source={eventsQuery.data?.source}
+                partialMessage="Gráfico da página atual, até 50 eventos. Não representa todo o histórico."
               />
             </Suspense>
           )}
@@ -167,7 +173,7 @@ export function EventJournalPage({
         <div className="panel-heading">
           <div>
             <h2 id="events-title">Eventos registrados</h2>
-            <p>Alternativa tabular acessível à visualização</p>
+            <p>Até 50 eventos por página, do mais recente ao mais antigo.</p>
           </div>
           {eventsQuery.isFetching && !eventsQuery.isLoading && (
             <span className="refreshing">
@@ -239,6 +245,33 @@ export function EventJournalPage({
             </TableBody>
           </Table>
         )}
+        <div className="panel-heading" aria-label="Paginação de eventos">
+          <span aria-live="polite">
+            Página {cursors.length} · {events.length} de{" "}
+            {eventsQuery.data?.total ?? 0} eventos acessíveis
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={cursors.length === 1 || eventsQuery.isFetching}
+              onClick={() => setCursors((previous) => previous.slice(0, -1))}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              disabled={
+                !eventsQuery.data?.next_cursor || eventsQuery.isFetching
+              }
+              onClick={() => {
+                const next = eventsQuery.data?.next_cursor;
+                if (next) setCursors((previous) => [...previous, next]);
+              }}
+            >
+              Próxima página
+            </Button>
+          </div>
+        </div>
       </section>
     </main>
   );

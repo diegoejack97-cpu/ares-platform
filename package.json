@@ -36,6 +36,10 @@
     "m6:bootstrap": "python scripts/bootstrap-m6-local.py",
     "graph:update": "graphify update ."
   },
+  "overrides": {
+    "shell-quote": "1.11.0",
+    "source-map-js": "1.2.2"
+  },
   "engines": {
     "node": ">=20"
   },

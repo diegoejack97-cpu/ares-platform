@@ -38,7 +38,7 @@ async def test_postgres_journal_persists_and_deduplicates() -> None:
     assert second.duplicate is True
     assert second.event_id == first.event_id
     assert page.total >= 1
-    assert page.source == "Supabase/PostgreSQL local"
+    assert page.source == "Supabase/PostgreSQL"
     assert any(
         item.id == first.event_id and item.aggregate_id == "deal-postgres-42" for item in page.items
     )

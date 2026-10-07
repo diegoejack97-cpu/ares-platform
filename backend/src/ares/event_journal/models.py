@@ -16,12 +16,12 @@ class IncomingCRMEvent(BaseModel):
 
 class JournalEvent(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    provider_event_id: str
+    provider_event_id: str | None
     event_type: str
     aggregate_type: str
     aggregate_id: str
     correlation_id: UUID = Field(default_factory=uuid4)
-    source: Literal["crm"] = "crm"
+    source: str = "crm"
     producer: str = Field(default="fake-crm", min_length=1, max_length=200)
     status: Literal["recorded"] = "recorded"
     occurred_at: datetime
@@ -32,6 +32,7 @@ class JournalEvent(BaseModel):
 class JournalPage(BaseModel):
     items: list[JournalEvent]
     total: int
+    next_cursor: str | None = None
     source: str = "FakeCRM local"
     freshness_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

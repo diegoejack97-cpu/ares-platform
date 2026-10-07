@@ -13,6 +13,8 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from ares.auth.models import AuthenticatedUser
+from ares.auth.read_scope import read_connection
 from ares.graph.projector import project_event
 from ares.intelligence.models import CanonicalEvent, PipelineResult
 from ares.intelligence.rules import evaluate
@@ -69,9 +71,13 @@ def _cursor_decode(value: str) -> list[Any]:
 class IntelligenceService:
     """M2 deterministic pipeline. It is the sole reader that creates context snapshots."""
 
-    def __init__(self, database_url: str, tenant_id: UUID) -> None:
+    def __init__(
+        self, database_url: str, tenant_id: UUID, *, reader: AuthenticatedUser | None = None
+    ) -> None:
         self._database_url = database_url
         self._tenant_id = tenant_id
+        self._reader = reader
+        self._deal_table = "private.portfolio_deals" if reader is not None else "public.deals"
 
     async def process_event(self, event_id: UUID) -> PipelineResult:
         return await asyncio.to_thread(self.process_event_sync, event_id)
@@ -492,12 +498,12 @@ class IntelligenceService:
               o.correlation_id, d.id as deal_id, d.title, d.external_id, d.external_stage,
               d.value as deal_value, d.currency, d.last_activity_at
             from public.ares_opportunities o
-            join public.deals d on d.tenant_id = o.tenant_id and d.id = o.deal_id
+            join {self._deal_table} d on d.tenant_id = o.tenant_id and d.id = o.deal_id
             where {" and ".join(clauses)}
             order by o.priority, o.sla_at asc nulls last, o.score desc, o.id
             limit %s
         """
-        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+        with read_connection(self._database_url, self._reader) as connection:
             rows = [dict(row) for row in connection.execute(query, params).fetchall()]
         has_more = len(rows) > limit
         items = rows[:limit]
@@ -519,10 +525,10 @@ class IntelligenceService:
         return await asyncio.to_thread(self._opportunity_analytics_sync)
 
     def _opportunity_analytics_sync(self) -> dict[str, Any]:
-        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
-            base = """
+        with read_connection(self._database_url, self._reader) as connection:
+            base = f"""
                 from public.ares_opportunities o
-                join public.deals d on d.tenant_id = o.tenant_id and d.id = o.deal_id
+                join {self._deal_table} d on d.tenant_id = o.tenant_id and d.id = o.deal_id
                 where o.tenant_id = %s
             """
             stages = connection.execute(
@@ -631,13 +637,13 @@ class IntelligenceService:
         return await asyncio.to_thread(self._get_opportunity_sync, opportunity_id)
 
     def _get_opportunity_sync(self, opportunity_id: UUID) -> dict[str, Any] | None:
-        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+        with read_connection(self._database_url, self._reader) as connection:
             opportunity = connection.execute(
-                """
+                f"""
                 select o.*, d.title, d.external_id, d.external_stage, d.status as deal_status,
                   d.value as deal_value, d.currency, d.external_ref
                 from public.ares_opportunities o
-                join public.deals d on d.tenant_id = o.tenant_id and d.id = o.deal_id
+                join {self._deal_table} d on d.tenant_id = o.tenant_id and d.id = o.deal_id
                 where o.tenant_id = %s and o.id = %s
                 """,
                 (self._tenant_id, opportunity_id),
@@ -675,7 +681,7 @@ class IntelligenceService:
         return await asyncio.to_thread(self._get_context_sync, opportunity_id)
 
     def _get_context_sync(self, opportunity_id: UUID) -> dict[str, Any] | None:
-        with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+        with read_connection(self._database_url, self._reader) as connection:
             row = connection.execute(
                 """
                 select id as context_ref, snapshot_version, opportunity_state, facts_json as facts,
