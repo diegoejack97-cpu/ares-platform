@@ -1,3 +1,5 @@
+import { CommercialConfigurationPanel } from "@/features/agents/commercial-configuration";
+import { MemoryPanel } from "./memory-panel";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -193,6 +195,8 @@ export function AgentsPage() {
           </Button>
         </div>
       </header>
+      <CommercialConfigurationPanel />
+      <MemoryPanel />
       {query.isError ? (
         <div className="agents-notice" role="alert">
           <strong>

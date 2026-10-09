@@ -1,6 +1,7 @@
+import { ChatRecommendationAction } from "./chat-recommendation-action";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   ArrowsClockwiseIcon,
   PaperPlaneTiltIcon,
@@ -10,8 +11,20 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/features/auth/auth-context";
 import type { ChatContext, ChatTool } from "@/features/agents/contract";
-import { ChatError, getChat, sendChat } from "./api";
+import {
+  ChatError,
+  getChat,
+  sendChat,
+  openFindingChat,
+  saveChatFeedback,
+} from "./api";
+import {
+  getSpecialistAnalysis,
+  getOpportunityContext,
+  startSpecialistAnalysis,
+} from "@/features/opportunities/api";
 import { ChatMarkdown } from "./ChatMarkdown";
+import type { ChatExchange } from "@/features/agents/contract";
 import { ChatEvidence } from "./ChatEvidence";
 import "./chat.css";
 
@@ -29,7 +42,7 @@ export function ChatPage() {
   const [params] = useSearchParams();
   return (
     <ChatConversation
-      key={`${session.user.id}:${session.user.app_metadata.active_tenant_id}:${params.get("scope")}`}
+      key={`${session.user.id}:${session.user.app_metadata.active_tenant_id}:${params.get("scope")}:${params.get("finding")}`}
     />
   );
 }
@@ -37,7 +50,23 @@ export function ChatPage() {
 function ChatConversation() {
   const { session } = useAuth();
   const [params] = useSearchParams();
+  const client = useQueryClient();
+  const location = useLocation();
+  const returnTo =
+    typeof location.state?.returnTo === "string" &&
+    /^\/(radar|sentinels|pipeline|approvals|opportunities)(\/|$)/.test(
+      location.state.returnTo,
+    )
+      ? location.state.returnTo
+      : "/radar";
   const scope = params.get("scope") || undefined;
+  const finding = params.get("finding") || undefined;
+  const [older, setOlder] = useState<ChatExchange[]>([]);
+  const [olderCursor, setOlderCursor] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const opened = useRef(false);
   const [text, setText] = useState("");
   const [exchange, setExchange] = useState<LocalExchange | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,8 +85,16 @@ function ChatConversation() {
       session.user.id,
       session.user.app_metadata.active_tenant_id,
       scope ?? "all",
+      finding ?? "none",
     ],
-    queryFn: ({ signal }) => getChat(scope, signal),
+    queryFn: async ({ signal }) => {
+      if (finding && !opened.current) {
+        await openFindingChat(finding, signal);
+        opened.current = true;
+        void client.invalidateQueries({ queryKey: ["sentinel-notifications"] });
+      }
+      return getChat(scope, signal, finding);
+    },
     retry: false,
     refetchInterval: busy ? false : 30_000,
     refetchOnWindowFocus: !busy,
@@ -144,58 +181,67 @@ function ChatConversation() {
     });
     setText("");
     try {
-      await sendChat(scope, question, abort.signal, (kind, value) => {
-        if (kind === "status" && typeof value.label === "string")
-          setPhase(value.label);
-        if (kind === "token") {
-          setPhase("ARES está organizando a resposta…");
-          queuedText.current += String(value.text ?? "");
-          revealQueuedText();
-        }
-        if (kind === "tool") {
-          if (value.status === "running")
-            setPhase("ARES está consultando as fontes…");
-          setExchange((old) =>
-            old
-              ? {
-                  ...old,
-                  tools: [
-                    ...old.tools,
-                    { name: String(value.name), status: String(value.status) },
-                  ],
-                }
-              : old,
-          );
-        }
-        if (kind === "context")
-          setExchange((old) =>
-            old
-              ? {
-                  ...old,
-                  context: value as unknown as ChatContext,
-                  id:
-                    typeof value.message_id === "string"
-                      ? value.message_id
-                      : old.id,
-                }
-              : old,
-          );
-        if (kind === "done")
-          setExchange((old) =>
-            old
-              ? {
-                  ...old,
-                  status: "succeeded",
-                  id:
-                    typeof value.message_id === "string"
-                      ? value.message_id
-                      : typeof value.id === "string"
-                        ? value.id
+      await sendChat(
+        scope,
+        question,
+        abort.signal,
+        (kind, value) => {
+          if (kind === "status" && typeof value.label === "string")
+            setPhase(value.label);
+          if (kind === "token") {
+            setPhase("ARES está organizando a resposta…");
+            queuedText.current += String(value.text ?? "");
+            revealQueuedText();
+          }
+          if (kind === "tool") {
+            if (value.status === "running")
+              setPhase("ARES está consultando as fontes…");
+            setExchange((old) =>
+              old
+                ? {
+                    ...old,
+                    tools: [
+                      ...old.tools,
+                      {
+                        name: String(value.name),
+                        status: String(value.status),
+                      },
+                    ],
+                  }
+                : old,
+            );
+          }
+          if (kind === "context")
+            setExchange((old) =>
+              old
+                ? {
+                    ...old,
+                    context: value as unknown as ChatContext,
+                    id:
+                      typeof value.message_id === "string"
+                        ? value.message_id
                         : old.id,
-                }
-              : old,
-          );
-      });
+                  }
+                : old,
+            );
+          if (kind === "done")
+            setExchange((old) =>
+              old
+                ? {
+                    ...old,
+                    status: "succeeded",
+                    id:
+                      typeof value.message_id === "string"
+                        ? value.message_id
+                        : typeof value.id === "string"
+                          ? value.id
+                          : old.id,
+                  }
+                : old,
+            );
+        },
+        finding,
+      );
       if (queuedText.current)
         await new Promise<void>((resolve, reject) => {
           revealFinished.current = resolve;
@@ -290,6 +336,35 @@ function ChatConversation() {
           ) : null}
         </div>
       ) : null}
+      {data?.finding ? (
+        <aside className="chat-origin" aria-label="Origem da conversa">
+          <div>
+            <span className="eyebrow">ALERTA DA SENTINELA</span>
+            <strong>{data.finding.title}</strong>
+            <span>
+              {data.finding.rule_title} · Detectado em{" "}
+              {new Date(data.finding.detected_at).toLocaleString("pt-BR")}
+            </span>
+            <p>
+              {data.finding.condition_current
+                ? "Condição presente na leitura atual."
+                : "Alerta histórico: a condição original não está mais ativa."}{" "}
+              {data.finding.changed ? "Os dados ou a regra mudaram." : ""}
+            </p>
+          </div>
+          <ChatSpecialistAction opportunity={data.finding.opportunity_id} />
+          <ChatRecommendationAction opportunity={data.finding.opportunity_id} />
+          <nav aria-label="Navegação do alerta">
+            <Link to={returnTo}>Voltar à tela anterior</Link>
+            <Link to={`/opportunities/${data.finding.opportunity_id}`}>
+              Ver oportunidade e análises
+            </Link>
+          </nav>
+        </aside>
+      ) : null}
+      {scope && !finding ? (
+        <ChatRecommendationAction opportunity={scope} />
+      ) : null}
       {data ? (
         <section className="chat-conversation" aria-label="Conversa">
           {!data.model_available ? (
@@ -313,6 +388,46 @@ function ChatConversation() {
                   80;
             }}
           >
+            {(olderCursor === undefined ? data.next_before : olderCursor) ? (
+              <li className="chat-older">
+                <Button
+                  variant="outline"
+                  disabled={loadingOlder || busy}
+                  onClick={async () => {
+                    setLoadingOlder(true);
+                    followLatest.current = false;
+                    const element = transcript.current;
+                    const height = element?.scrollHeight ?? 0;
+                    try {
+                      const previous = await getChat(
+                        scope,
+                        undefined,
+                        finding,
+                        (olderCursor === undefined
+                          ? data.next_before
+                          : olderCursor) ?? undefined,
+                      );
+                      setOlder((old) => [...previous.items, ...old]);
+                      setOlderCursor(previous.next_before);
+                      requestAnimationFrame(() => {
+                        if (element)
+                          element.scrollTop += element.scrollHeight - height;
+                      });
+                    } catch (failure) {
+                      setError(
+                        failure instanceof Error
+                          ? failure
+                          : new Error("Não foi possível carregar o histórico."),
+                      );
+                    } finally {
+                      setLoadingOlder(false);
+                    }
+                  }}
+                >
+                  Carregar mensagens anteriores
+                </Button>
+              </li>
+            ) : null}
             {data.items.length === 0 && !exchange ? (
               <li className="chat-welcome">
                 <h2>Como posso ajudar?</h2>
@@ -322,7 +437,11 @@ function ChatConversation() {
                 </p>
               </li>
             ) : null}
-            {data.items
+            {[...older, ...data.items]
+              .filter(
+                (item, index, all) =>
+                  all.findIndex((other) => other.id === item.id) === index,
+              )
               .filter((item) => !(busy && item.id === exchange?.id))
               .map((item) => (
                 <Fragment key={item.id}>
@@ -349,6 +468,9 @@ function ChatConversation() {
                       <p className="chat-notice">
                         Esta resposta está incompleta.
                       </p>
+                    ) : null}
+                    {item.status === "succeeded" ? (
+                      <ResponseFeedback message={item.id} />
                     ) : null}
                     <ChatEvidence
                       context={item.context_json}
@@ -403,6 +525,22 @@ function ChatConversation() {
               {error instanceof ChatError && error.correlationId ? (
                 <p>Correlação: {error.correlationId}</p>
               ) : null}
+            </div>
+          ) : null}
+          {data.finding && !busy ? (
+            <div className="chat-suggestions" aria-label="Perguntas sugeridas">
+              {data.finding.suggestions.map((suggestion) => (
+                <button
+                  type="button"
+                  key={suggestion}
+                  onClick={() => {
+                    setText(suggestion);
+                    composer.current?.focus();
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           ) : null}
           <form
@@ -472,5 +610,122 @@ function ChatConversation() {
         </section>
       ) : null}
     </main>
+  );
+}
+
+function ResponseFeedback({ message }: { message: string }) {
+  const [rating, setRating] = useState<"helpful" | "unhelpful" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  async function save(value: "helpful" | "unhelpful") {
+    setBusy(true);
+    setStatus("");
+    try {
+      await saveChatFeedback(message, value, reason);
+      setRating(value);
+      setStatus("Feedback registrado.");
+    } catch {
+      setStatus("Não foi possível registrar o feedback.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="chat-feedback" aria-label="Avaliar resposta">
+      <button
+        type="button"
+        disabled={busy}
+        aria-pressed={rating === "helpful"}
+        onClick={() => void save("helpful")}
+      >
+        Útil
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        aria-pressed={rating === "unhelpful"}
+        onClick={() => setRating("unhelpful")}
+      >
+        Não útil
+      </button>
+      {rating === "unhelpful" ? (
+        <>
+          <input
+            aria-label="Motivo do feedback"
+            maxLength={500}
+            value={reason}
+            placeholder="O que faltou? (opcional)"
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save("unhelpful")}
+          >
+            Enviar feedback
+          </button>
+        </>
+      ) : null}
+      <span role="status">{status}</span>
+    </div>
+  );
+}
+
+function ChatSpecialistAction({ opportunity }: { opportunity: string }) {
+  const command = useRef<Parameters<typeof startSpecialistAnalysis>[0] | null>(
+    null,
+  );
+  const state = useQuery({
+    queryKey: ["specialist-analysis", opportunity],
+    queryFn: () => getSpecialistAnalysis(opportunity),
+    retry: false,
+    refetchInterval: (query) =>
+      ["queued", "running"].includes(query.state.data?.state ?? "")
+        ? 3000
+        : 30000,
+  });
+  const start = useMutation({
+    mutationFn: async () => {
+      if (!command.current) {
+        const context = await getOpportunityContext(opportunity);
+        command.current = {
+          opportunity_id: opportunity,
+          context_ref: context.context_ref,
+          idempotency_key: crypto.randomUUID(),
+        };
+      }
+      return startSpecialistAnalysis(command.current);
+    },
+    onSuccess: () => state.refetch(),
+  });
+  if (!state.data?.enabled) return null;
+  const active = ["queued", "running"].includes(state.data.state);
+  return (
+    <div className="chat-specialist">
+      <span role="status">
+        {state.data.state === "ready"
+          ? "Diagnóstico especialista vigente disponível."
+          : active
+            ? "Agentes de triagem e diagnóstico em andamento."
+            : "Diagnóstico especializado requer uma análise atual."}
+      </span>
+      {state.data.can_request ? (
+        <Button
+          variant="outline"
+          disabled={active || start.isPending}
+          onClick={() => void start.mutate()}
+        >
+          Solicitar diagnóstico
+        </Button>
+      ) : null}
+      <small>Usa a cota de IA do plano; não altera o CRM.</small>
+      {start.isError ? (
+        <p role="alert">
+          Não foi possível solicitar o diagnóstico. Consulte o detalhe da
+          oportunidade.
+        </p>
+      ) : null}
+    </div>
   );
 }

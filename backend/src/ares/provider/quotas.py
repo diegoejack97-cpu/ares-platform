@@ -14,6 +14,10 @@ class QuotaCommand(ProviderCommand):
     seats_limit: int = Field(ge=0, le=100000)
     agent_slots: int | None = Field(default=None, ge=0, le=100000)
     sentinel_slots: int | None = Field(default=None, ge=0, le=100000)
+    memory_storage_bytes: int | None = Field(default=None, ge=0, le=1073741824)
+    embedding_daily_budget_brl: Decimal | None = Field(
+        default=None, ge=0, max_digits=12, decimal_places=6
+    )
     ai_daily_budget_brl: Decimal = Field(ge=0, max_digits=12, decimal_places=6)
     ai_monthly_budget_brl: Decimal = Field(ge=0, max_digits=12, decimal_places=6)
     usd_brl_rate: Decimal = Field(gt=0, max_digits=14, decimal_places=8)
@@ -66,6 +70,14 @@ def set_quota(
                 actor.user_id,
             ),
         ).fetchone()
+        if (
+            command.memory_storage_bytes is not None
+            or command.embedding_daily_budget_brl is not None
+        ):
+            updated = db.execute(
+                "update public.tenant_quotas set memory_storage_bytes=coalesce(%s,memory_storage_bytes),embedding_daily_budget_brl=coalesce(%s,embedding_daily_budget_brl) where tenant_id=%s returning *",
+                (command.memory_storage_bytes, command.embedding_daily_budget_brl, tenant),
+            ).fetchone()
         if previous is None:
             # Opening balance is valued at the explicitly supplied setup rate, never a fictional historical FX rate.
             db.execute(

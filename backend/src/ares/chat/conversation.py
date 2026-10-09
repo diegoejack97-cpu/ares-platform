@@ -13,17 +13,18 @@ from ares.chat.search import normalize
 
 
 def recent_turns(
-    database_url: str, user: AuthenticatedUser, scope: UUID | None
+    database_url: str, user: AuthenticatedUser, scope: UUID | None, finding: UUID | None = None
 ) -> list[dict[str, Any]]:
     with psycopg.connect(database_url, row_factory=dict_row) as db:
         rows = db.execute(
             "select m.user_text,m.context_json from public.messages m "
             "join public.conversations c on c.tenant_id=m.tenant_id and c.id=m.conversation_id "
             "where c.tenant_id=%s and c.owner_user_id=%s "
-            "and c.opportunity_id is not distinct from %s and m.status='succeeded' "
+            "and c.opportunity_id is not distinct from %s "
+            "and c.finding_id is not distinct from %s and m.status='succeeded' "
             "and m.created_at>now()-interval '24 hours' "
             "order by m.created_at desc,m.id desc limit 3",
-            (user.tenant_id, user.user_id, scope),
+            (user.tenant_id, user.user_id, scope, finding),
         ).fetchall()
     return [dict(row) for row in rows]
 

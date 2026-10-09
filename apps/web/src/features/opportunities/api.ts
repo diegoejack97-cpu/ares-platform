@@ -7,6 +7,7 @@ import type {
   OpportunityDetail,
   OpportunityPage,
   SentinelPage,
+  SpecialistAnalysis,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -33,11 +34,13 @@ async function request<T>(
   if (!response.ok) {
     const detail = (await response.json().catch(() => null)) as {
       detail?: string | { code?: string; current_version?: number };
+      error?: { code?: string; correlation_id?: string };
     } | null;
     const message =
       typeof detail?.detail === "string"
         ? detail.detail
-        : (detail?.detail?.code ??
+        : (detail?.error?.code ??
+          detail?.detail?.code ??
           `ARES API respondeu com status ${response.status}`);
     throw new Error(message);
   }
@@ -64,6 +67,18 @@ export function getOpportunity(id: string): Promise<OpportunityDetail> {
 
 export function getOpportunityContext(id: string): Promise<ContextSnapshot> {
   return request(`/api/v1/opportunities/${id}/context`);
+}
+
+export function getSpecialistAnalysis(id: string): Promise<SpecialistAnalysis> {
+  return request(`/api/v1/agents/opportunities/${id}/analysis`);
+}
+
+export function startSpecialistAnalysis(command: {
+  opportunity_id: string;
+  context_ref: string;
+  idempotency_key: string;
+}): Promise<{ id: string; status: string }> {
+  return request("/api/v1/agents/workflows", { method: "POST", body: command });
 }
 
 export function generateRecommendation(

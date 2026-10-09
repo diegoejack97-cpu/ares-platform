@@ -75,9 +75,12 @@ class Settings(BaseSettings):
     rate_limit_writes_per_minute: int = 20
     rate_limit_chat_per_minute: int = 6
     rate_limit_ip_per_minute: int = 600
+    agent_max_concurrent_per_tenant: int = 2
 
     @model_validator(mode="after")
     def reject_development_secret_outside_development(self) -> "Settings":
+        if not 1 <= self.agent_max_concurrent_per_tenant <= 16:
+            raise ValueError("invalid_agent_concurrency")
         if (
             min(
                 self.rate_limit_requests_per_minute,

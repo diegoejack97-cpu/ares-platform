@@ -25,10 +25,14 @@ class ModelAlternative(BaseModel):
     tradeoff: str
 
 
-class ModelRecommendationOutput(BaseModel):
+class ModelFollowupOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     recommended_action: ModelAction
     rationale: str
     confidence: float
     alternatives: list[ModelAlternative]
     contraindication: str | None
+
+
+class ModelRecommendationOutput(ModelFollowupOutput):
     triage: TriageOutput

@@ -104,6 +104,8 @@ class BillingRecord(BaseModel):
 
 
 class QuotaRecord(BaseModel):
+    memory_storage_bytes: int = 20971520
+    embedding_daily_budget_brl: Decimal = Decimal("1")
     seats_limit: int
     agent_slots: int
     sentinel_slots: int

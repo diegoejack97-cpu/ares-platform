@@ -1,3 +1,4 @@
+import { PortfolioPanel } from "@/features/agents/portfolio-panel";
 import {
   lazy,
   Suspense,
@@ -254,6 +255,7 @@ export function RadarPage() {
           </Button>
         </div>
       ) : null}
+      <PortfolioPanel />
       <section className="observatory-overview" aria-label="Resumo do Radar">
         <article className="exposure-console">
           <div className="console-caption">

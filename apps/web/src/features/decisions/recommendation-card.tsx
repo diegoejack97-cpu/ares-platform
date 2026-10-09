@@ -131,6 +131,29 @@ export function RecommendationCard({
           {String(recommendation.recommended_action.payload[field] ?? "")}
         </p>
         <p className="decision-rationale">{recommendation.rationale}</p>
+        {recommendation.proposal_plan ? (
+          <details className="decision-alternatives">
+            <summary>Riscos, lacunas e validade da proposta</summary>
+            <ul>
+              {[
+                ...recommendation.proposal_plan.risks,
+                ...recommendation.proposal_plan.missing_information,
+                ...recommendation.proposal_plan.contraindications,
+              ].map((text, index) => (
+                <li key={index}>{text}</li>
+              ))}
+            </ul>
+            <p>
+              Válida até{" "}
+              {recommendation.proposal_valid_until
+                ? new Date(recommendation.proposal_valid_until).toLocaleString(
+                    "pt-BR",
+                  )
+                : "não informado"}
+              . Dados alterados exigem nova revisão.
+            </p>
+          </details>
+        ) : null}
 
         {!compact && recommendation.alternatives.length > 0 && (
           <details className="decision-alternatives">
@@ -158,7 +181,11 @@ export function RecommendationCard({
           </div>
           <div>
             <dt>Confiança</dt>
-            <dd>{Math.round(recommendation.confidence * 100)}%</dd>
+            <dd>
+              {recommendation.proposal_plan
+                ? "Não estimada"
+                : `${Math.round(recommendation.confidence * 100)}%`}
+            </dd>
           </div>
           <div>
             <dt>Context ref</dt>
@@ -175,7 +202,10 @@ export function RecommendationCard({
         {awaitingApproval && !canDecide && (
           <p className="decision-rationale" role="status">
             {recommendation.execution_block_reason
-              ? "Ações bloqueadas pelo contrato. Consulte a liberação de plano e cobrança da empresa."
+              ? recommendation.execution_block_reason ===
+                "recommendation_context_stale"
+                ? "O contexto mudou ou a proposta expirou. Prepare uma nova proposta."
+                : "Ações bloqueadas pelo contrato. Consulte a liberação de plano e cobrança da empresa."
               : expired
                 ? "Esta aprovação expirou. Atualize a consulta."
                 : recommendation.approval_required_role === "manager"

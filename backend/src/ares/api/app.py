@@ -12,9 +12,12 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Qu
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from ares.agents.api import agent_router
+from ares.agents.commercial_api import commercial_router
+from ares.agents.runtime_api import agent_runtime_router
 from ares.auth.models import AuthenticatedUser
 from ares.auth.service import SupabaseAuthService
 from ares.chat.api import chat_router
@@ -33,7 +36,9 @@ from ares.event_journal.service import EventJournal, InMemoryEventJournal, Postg
 from ares.graph.api import graph_router
 from ares.impact.api import impact_router
 from ares.integrations.api import integration_router
+from ares.intelligence.context_api import context_router
 from ares.intelligence.service import IntelligenceService
+from ares.knowledge.api import knowledge_router
 from ares.leads.api import lead_router
 from ares.provider.account import account_router
 from ares.provider.api import install_provider_api
@@ -42,6 +47,7 @@ from ares.security.body_limit import BodyLimitMiddleware
 from ares.security.rate_limit import RateLimited, RequestLimiter
 from ares.security.traffic_limit import TrafficLimitMiddleware
 from ares.sentinels.models import (
+    NotificationCommand,
     SentinelArchiveCommand,
     SentinelCatalog,
     SentinelRuleCommand,
@@ -203,6 +209,10 @@ CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
 
 app.include_router(integration_router(settings, require_user))
 app.include_router(agent_router(settings, require_user))
+app.include_router(agent_runtime_router(settings, require_user))
+app.include_router(commercial_router(settings, require_user))
+app.include_router(context_router(settings, require_user))
+app.include_router(knowledge_router(settings, require_user))
 app.include_router(graph_router(settings, require_user))
 app.include_router(chat_router(settings, require_user))
 app.include_router(impact_router(settings, require_user))
@@ -490,6 +500,91 @@ async def list_sentinels(
     return await asyncio.to_thread(
         SentinelService(settings.database_url).list_sync, user.tenant_id, limit=limit, reader=user
     )
+
+
+@app.get("/api/v1/sentinels/notifications")
+async def sentinel_notifications(
+    user: CurrentUser,
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=100000),
+    view: Literal["all", "unread", "archived"] = "all",
+) -> dict[str, Any]:
+    from ares.sentinels.notifications import NotificationService
+
+    try:
+        return await asyncio.to_thread(
+            NotificationService(settings.database_url).list_sync, user, limit, offset, view
+        )
+    except SentinelScheduleConflict as error:
+        raise HTTPException(403, detail={"code": error.code}) from None
+
+
+@app.put("/api/v1/sentinels/notifications/{finding_id}")
+async def sentinel_notification_state(
+    finding_id: UUID, command: NotificationCommand, user: CurrentUser
+) -> dict[str, Any]:
+    from ares.sentinels.notifications import NotificationService
+
+    try:
+        return await asyncio.to_thread(
+            NotificationService(settings.database_url).mark_sync,
+            user,
+            finding_id,
+            command.expected_revision,
+            command.action,
+        )
+    except SentinelScheduleConflict as error:
+        status = (
+            403
+            if error.code == "sentinel_access_denied"
+            else 404
+            if error.code == "sentinel_finding_not_found"
+            else 409
+        )
+        raise HTTPException(status, detail={"code": error.code}) from None
+
+
+@app.get("/api/v1/sentinels/rules/options")
+def sentinel_rule_options(user: CurrentUser) -> dict[str, Any]:
+    from ares.sentinels.notifications import scope_on
+
+    try:
+        with psycopg.connect(settings.database_url, row_factory=dict_row) as db:
+            scope_on(db, user, admin=True)
+            members = db.execute(
+                "select m.user_id,u.email,m.role::text role from public.memberships m "
+                "join auth.users u on u.id=m.user_id where m.tenant_id=%s and m.active "
+                "order by u.email nulls last,m.user_id limit 1000",
+                (user.tenant_id,),
+            ).fetchall()
+            quota = db.execute(
+                "select agent_slots from public.tenant_quotas where tenant_id=%s", (user.tenant_id,)
+            ).fetchone()
+            return {
+                "members": [dict(member) for member in members],
+                "agent_slots": quota["agent_slots"] if quota else 0,
+                "truncated": len(members) == 1000,
+            }
+    except SentinelScheduleConflict as error:
+        raise HTTPException(403, detail={"code": error.code}) from None
+
+
+@app.post("/api/v1/sentinels/rules/preview")
+async def preview_sentinel_rule(command: SentinelRuleCommand, user: CurrentUser) -> dict[str, Any]:
+    from ares.decision.execution_guard import ExecutionBlocked
+
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).preview_sync, user, command
+        )
+    except ExecutionBlocked as error:
+        raise HTTPException(403, detail={"code": error.code}) from None
+    except SentinelScheduleConflict as error:
+        raise HTTPException(
+            403 if error.code == "sentinel_access_denied" else 409, detail={"code": error.code}
+        ) from None
 
 
 @app.get("/api/v1/sentinels/config", response_model=SentinelSchedule)

@@ -492,3 +492,5 @@ test("charts receive honest series and a table alternative exists", async () => 
     screen.getByText(/1 sinal\(is\) sem oportunidade vinculada/),
   ).toBeInTheDocument();
 });
+
+vi.mock("@/features/agents/portfolio-panel", () => ({ PortfolioPanel: () => null }));

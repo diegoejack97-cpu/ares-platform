@@ -15,6 +15,7 @@ import type {
   SentinelRuleCommand,
   SentinelSchedule,
 } from "@/features/agents/contract";
+import { signalLabels } from "@/features/opportunities/format";
 import { dateTime } from "@/features/opportunities/format";
 import { account } from "@/features/provider/account-api";
 import {
@@ -22,6 +23,8 @@ import {
   createSentinelRule,
   getSentinelCatalog,
   saveSentinelRule,
+  previewSentinelRule,
+  getSentinelOptions,
 } from "./api";
 import "./sentinels.css";
 
@@ -89,6 +92,10 @@ function RuleEditor({
   onSaved: (message: string) => void;
 }) {
   const client = useQueryClient();
+  const options = useQuery({
+    queryKey: ["sentinel-options"],
+    queryFn: getSentinelOptions,
+  });
   const [title, setTitle] = useState(rule?.title ?? "");
   const [kind, setKind] = useState<Kind>(rule?.kind ?? "sla_overdue");
   const [threshold, setThreshold] = useState(rule?.threshold_hours ?? 0);
@@ -100,10 +107,79 @@ function RuleEditor({
     rule?.start_time_local.slice(0, 5) ?? "09:00",
   );
   const [reason, setReason] = useState("");
+  const [days, setDays] = useState(
+    rule?.calendar?.days_of_week ?? [0, 1, 2, 3, 4, 5, 6],
+  );
+  const [zone, setZone] = useState(rule?.calendar?.timezone || timezone);
+  const [endTime, setEndTime] = useState(
+    rule?.calendar?.end_time_local?.slice(0, 5) ?? "",
+  );
+  const [times, setTimes] = useState(
+    rule?.calendar?.execution_times?.map((t) => t.slice(0, 5)).join(", ") ?? "",
+  );
+  const [mode, setMode] = useState(
+    rule?.calendar?.execution_times?.length ? "times" : "interval",
+  );
+  const [stages, setStages] = useState<
+    NonNullable<SentinelRuleCommand["criteria"]>["stages"]
+  >(rule?.criteria?.stages ?? []);
+  const [owner, setOwner] = useState(rule?.criteria?.owner_user_id ?? "");
+  const [minValue, setMinValue] = useState(
+    String(rule?.criteria?.min_value ?? ""),
+  );
+  const [maxValue, setMaxValue] = useState(
+    String(rule?.criteria?.max_value ?? ""),
+  );
+  const [currency, setCurrency] = useState(rule?.criteria?.currency ?? "");
+  const [risks, setRisks] = useState(
+    rule?.criteria?.risk_types?.join(", ") ?? "",
+  );
+  const [interpret, setInterpret] = useState(rule?.interpret_with_ai ?? false);
+  function command(preview = false): SentinelRuleCommand {
+    return {
+      expected_version: rule?.version ?? null,
+      title: title.trim(),
+      kind,
+      threshold_hours: threshold,
+      enabled,
+      interval_minutes: mode === "times" ? 1440 : interval,
+      start_time_local: startTime,
+      reason: reason.trim() || (preview ? "Teste manual de regra" : ""),
+      criteria: {
+        stages,
+        owner_user_id: kind === "unassigned" ? null : owner || null,
+        min_value: minValue || null,
+        max_value: maxValue || null,
+        currency: currency || null,
+        risk_types: risks
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      },
+      calendar: {
+        days_of_week: days,
+        timezone: zone,
+        end_time_local: endTime || null,
+        execution_times:
+          mode === "times"
+            ? times
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean)
+            : [],
+      },
+      interpret_with_ai: interpret,
+    };
+  }
+  const preview = useMutation({
+    mutationFn: () => previewSentinelRule(command(true)),
+  });
+
   const refresh = async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["sentinel-catalog"] }),
       client.invalidateQueries({ queryKey: ["sentinel-findings"] }),
+      client.invalidateQueries({ queryKey: ["sentinel-notifications"] }),
     ]);
   };
   const mutation = useMutation({
@@ -136,16 +212,7 @@ function RuleEditor({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hasCapacity) return;
-    mutation.mutate({
-      expected_version: rule?.version ?? null,
-      title: title.trim(),
-      kind,
-      threshold_hours: threshold,
-      enabled,
-      interval_minutes: interval,
-      start_time_local: startTime,
-      reason: reason.trim(),
-    });
+    mutation.mutate(command());
   }
 
   return (
@@ -214,6 +281,7 @@ function RuleEditor({
             Frequência
             <select
               value={interval}
+              disabled={mode === "times"}
               onChange={(event) =>
                 setInterval(
                   Number(
@@ -240,9 +308,214 @@ function RuleEditor({
             />
           </label>
         </div>
+        <fieldset className="sentinel-options">
+          <legend>Dias e janela de execução</legend>
+          <div className="sentinel-weekdays">
+            {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map(
+              (day, index) => (
+                <label key={day}>
+                  <input
+                    type="checkbox"
+                    checked={days.includes(index)}
+                    onChange={() =>
+                      setDays((current) =>
+                        current.includes(index)
+                          ? current.filter((d) => d !== index)
+                          : [...current, index],
+                      )
+                    }
+                  />
+                  {day}
+                </label>
+              ),
+            )}
+          </div>
+          <div className="sentinel-form-grid">
+            <label>
+              Fuso da regra
+              <input
+                value={zone}
+                onChange={(e) => setZone(e.target.value)}
+                placeholder="America/Sao_Paulo"
+                required
+              />
+            </label>
+            <label>
+              Fim da janela (opcional)
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </label>
+            <label>
+              Modo da agenda
+              <select value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="interval">Intervalo</option>
+                <option value="times">Horários específicos</option>
+              </select>
+            </label>
+            {mode === "times" ? (
+              <label>
+                Horários (separados por vírgula)
+                <input
+                  value={times}
+                  onChange={(e) => setTimes(e.target.value)}
+                  placeholder="09:00, 14:00, 17:00"
+                  required
+                />
+              </label>
+            ) : null}
+          </div>
+          <p className="sentinel-form-note">
+            A janela começa no horário de referência e termina no mesmo dia. O
+            worker executa após o horário previsto; dias sem agenda não
+            executam.
+          </p>
+        </fieldset>
+        <fieldset className="sentinel-options">
+          <legend>Recorte observado (opcional)</legend>
+          <div className="sentinel-form-grid">
+            <label>
+              Etapa do CRM
+              <select
+                multiple
+                value={stages}
+                onChange={(e) =>
+                  setStages(
+                    Array.from(
+                      e.target.selectedOptions,
+                      (option) => option.value,
+                    ) as typeof stages,
+                  )
+                }
+              >
+                {[
+                  "new",
+                  "qualification",
+                  "proposal",
+                  "negotiation",
+                  "won",
+                  "lost",
+                ].map((value) => (
+                  <option key={value} value={value}>
+                    {
+                      (
+                        {
+                          new: "Entrada",
+                          qualification: "Qualificação",
+                          proposal: "Proposta",
+                          negotiation: "Negociação",
+                          won: "Ganho",
+                          lost: "Perdido",
+                        } as Record<string, string>
+                      )[value]
+                    }
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Responsável
+              <select
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                disabled={
+                  kind === "unassigned" || options.isPending || options.isError
+                }
+              >
+                <option value="">Toda a carteira</option>
+                {owner &&
+                !options.data?.members.some(
+                  (member) => member.user_id === owner,
+                ) ? (
+                  <option value={owner}>Responsável configurado</option>
+                ) : null}
+                {options.data?.members.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.email ?? `Membro sem e-mail (${member.role})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Moeda
+              <input
+                value={currency}
+                maxLength={3}
+                pattern="[A-Z]{3}"
+                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                placeholder="BRL"
+              />
+            </label>
+            <label>
+              Valor mínimo
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={minValue}
+                onChange={(e) => setMinValue(e.target.value)}
+              />
+            </label>
+            <label>
+              Valor máximo
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={maxValue}
+                onChange={(e) => setMaxValue(e.target.value)}
+              />
+            </label>
+            <label>
+              Tipos de risco
+              <select
+                multiple
+                value={risks
+                  .split(",")
+                  .map((r) => r.trim())
+                  .filter(Boolean)}
+                onChange={(e) =>
+                  setRisks(
+                    Array.from(
+                      e.target.selectedOptions,
+                      (option) => option.value,
+                    ).join(","),
+                  )
+                }
+              >
+                {Object.entries(signalLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="sentinel-form-note">
+            Valores exigem moeda. Sem seleção de etapa ou risco, todas as
+            condições correspondentes são consideradas.
+          </p>
+        </fieldset>
+        <label className="sentinel-switch">
+          <input
+            type="checkbox"
+            checked={interpret}
+            disabled={!interpret && (options.data?.agent_slots ?? 0) < 1}
+            onChange={(e) => setInterpret(e.target.checked)}
+          />{" "}
+          Interpretar achados com agente de IA
+        </label>
+        {options.isError ? (
+          <p role="alert" className="sentinel-form-warning">
+            Não foi possível carregar responsáveis e capacidade. Atualize a
+            tela.
+          </p>
+        ) : null}
         <p className="sentinel-form-note">
-          Horários no fuso {timezone}. O worker consulta a fila a cada minuto; a
-          execução pode ocorrer depois do horário previsto.
+          A interpretação usa capacidade e orçamento do plano. Sem IA, o achado
+          objetivo permanece no sino.
         </p>
         <label className="sentinel-switch">
           <input
@@ -274,6 +547,30 @@ function RuleEditor({
             {mutation.error?.message ?? archive.error?.message}
           </p>
         ) : null}
+        {preview.isError ? (
+          <p role="alert" className="sentinel-form-warning">
+            {preview.error.message}
+          </p>
+        ) : null}
+        {preview.data ? (
+          <section className="sentinel-preview" aria-label="Resultado do teste">
+            <strong>
+              {preview.data.matched_count} oportunidades correspondem aos
+              critérios.
+            </strong>
+            <p>
+              Teste auditado, sem salvar achados, chamar IA ou escrever no CRM.
+              {preview.data.truncated ? " Amostra de até 10 registros." : ""}
+            </p>
+            <ul>
+              {preview.data.items.map((item) => (
+                <li key={item.opportunity_id}>
+                  {item.title ?? "Oportunidade ARES"}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <div className="sentinel-editor-actions">
           <Button
             type="submit"
@@ -284,6 +581,14 @@ function RuleEditor({
               : rule
                 ? "Salvar regra"
                 : "Criar regra"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={preview.isPending || title.trim().length < 3}
+            onClick={() => preview.mutate()}
+          >
+            {preview.isPending ? "Testando…" : "Testar critérios sem salvar"}
           </Button>
           {rule ? (
             <Button
@@ -433,11 +738,36 @@ export function SentinelsPage() {
                   <dl className="sentinel-card-facts">
                     <div>
                       <dt>Frequência</dt>
-                      <dd>{frequency(rule.interval_minutes)}</dd>
+                      <dd>
+                        {rule.calendar?.execution_times?.length
+                          ? rule.calendar.execution_times
+                              .map((t) => t.slice(0, 5))
+                              .join(" · ")
+                          : frequency(rule.interval_minutes)}
+                      </dd>
                     </div>
                     <div>
                       <dt>Execuções previstas</dt>
-                      <dd>{1440 / rule.interval_minutes} por dia</dd>
+                      <dd>
+                        {rule.calendar?.execution_times?.length ||
+                          (rule.calendar?.timezone ||
+                          rule.calendar?.end_time_local
+                            ? Math.floor(
+                                ((
+                                  rule.calendar?.end_time_local?.slice(0, 5) ??
+                                  "23:59"
+                                )
+                                  .split(":")
+                                  .reduce((h, m) => h * 60 + Number(m), 0) -
+                                  rule.start_time_local
+                                    .slice(0, 5)
+                                    .split(":")
+                                    .reduce((h, m) => h * 60 + Number(m), 0)) /
+                                  rule.interval_minutes,
+                              ) + 1
+                            : 1440 / rule.interval_minutes)}{" "}
+                        por dia
+                      </dd>
                     </div>
                     <div>
                       <dt>Início no dia</dt>
@@ -460,6 +790,35 @@ export function SentinelsPage() {
                       <dd>{rule.last_created_count ?? "—"}</dd>
                     </div>
                   </dl>
+                  <p className="sentinel-form-note">
+                    {(rule.calendar?.days_of_week ?? [0, 1, 2, 3, 4, 5, 6])
+                      .map(
+                        (d) =>
+                          ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][d],
+                      )
+                      .join(" · ")}{" "}
+                    · {rule.timezone}
+                    {rule.calendar?.end_time_local
+                      ? ` · Até ${rule.calendar.end_time_local.slice(0, 5)}`
+                      : ""}
+                  </p>
+                  <p className="sentinel-form-note">
+                    {rule.criteria?.stages?.length
+                      ? `Etapa: ${rule.criteria.stages.join(", ")} · `
+                      : ""}
+                    {rule.criteria?.currency
+                      ? `Moeda: ${rule.criteria.currency} · Valor: ${rule.criteria.min_value ?? "sem mínimo"} a ${rule.criteria.max_value ?? "sem máximo"}`
+                      : "Toda a carteira nos critérios da regra"}{" "}
+                    ·{" "}
+                    {rule.interpret_with_ai
+                      ? "Interpretação por IA"
+                      : "Detecção objetiva"}
+                  </p>
+                  {rule.last_error_code ? (
+                    <p role="status" className="sentinel-form-warning">
+                      Última falha: {rule.last_error_code}
+                    </p>
+                  ) : null}
                   <div className="sentinel-card-foot">
                     <span>
                       <ClockCountdownIcon size={15} aria-hidden /> Somente

@@ -121,3 +121,48 @@
     right: -100px;
   }
 }
+
+.notification-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  font-size: 12px;
+}
+.notification-filter select {
+  min-width: 0;
+  flex: 1;
+  background: var(--well);
+  border: 1px solid var(--edge);
+  color: var(--ink);
+  padding: 5px;
+}
+.notification-summary {
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.notification-actions,
+.notification-pagination {
+  display: flex;
+  gap: 8px;
+  padding: 0 15px 10px;
+}
+.notification-actions button,
+.notification-pagination button {
+  border: 1px solid var(--edge);
+  background: var(--well);
+  color: var(--ink);
+  font-size: 11px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.notification-pagination {
+  padding: 0 0 8px;
+  justify-content: space-between;
+}
+.notification-panel button:focus-visible,
+.notification-panel select:focus-visible {
+  outline: 2px solid var(--brasa);
+  outline-offset: 2px;
+}

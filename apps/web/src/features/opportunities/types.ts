@@ -120,6 +120,14 @@ export interface RecommendationAlternative {
 }
 
 export interface Recommendation {
+  proposal_plan?: {
+    risks: string[];
+    missing_information: string[];
+    contraindications: string[];
+    alternatives: string[];
+    valid_for_hours: number;
+  } | null;
+  proposal_valid_until?: string | null;
   id: string;
   intervention_id: string;
   opportunity_id: string;
@@ -181,6 +189,36 @@ export interface ContextSnapshot {
   included_event_count: number;
   omitted_event_count: number;
   correlation_id: string;
+}
+
+export interface SpecialistAnalysis {
+  enabled: boolean;
+  can_request: boolean;
+  state: string;
+  workflow_id: string | null;
+  valid_until: string | null;
+  source: string;
+  truncated?: boolean;
+  error_code?: string;
+  triage: {
+    summary: string;
+    category: string;
+    proposed_urgency: string;
+    evidence_refs: string[];
+    limitations: string[];
+  } | null;
+  diagnosis: {
+    summary: string;
+    facts: Array<{ path: string; value: string }>;
+    hypotheses: Array<{
+      explanation: string;
+      supporting_refs: string[];
+      contrary_refs: string[];
+      missing_information: string[];
+    }>;
+    limitations: string[];
+    needs_human_review: boolean;
+  } | null;
 }
 
 /**

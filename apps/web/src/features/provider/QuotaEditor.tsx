@@ -11,6 +11,8 @@ const schema = z
     seats_limit: z.number().int().min(0),
     agent_slots: z.number().int().min(0),
     sentinel_slots: z.number().int().min(0),
+    memory_storage_bytes: z.number().int().min(0).max(1073741824),
+    embedding_daily_budget_brl: z.number().min(0),
     ai_daily_budget_brl: z.number().min(0),
     ai_monthly_budget_brl: z.number().min(0),
     usd_brl_rate: z.number().positive(),
@@ -27,13 +29,22 @@ export function QuotaEditor({ data }: { data: TenantConfiguration }) {
           seats_limit: data.quota.seats_limit,
           agent_slots: data.quota.agent_slots,
           sentinel_slots: data.quota.sentinel_slots,
+          memory_storage_bytes: data.quota.memory_storage_bytes ?? 20971520,
+          embedding_daily_budget_brl: Number(
+            data.quota.embedding_daily_budget_brl ?? 1,
+          ),
           ai_daily_budget_brl: Number(data.quota.ai_daily_budget_brl),
           ai_monthly_budget_brl: Number(data.quota.ai_monthly_budget_brl),
           usd_brl_rate: Number(data.quota.usd_brl_rate),
           rate_source: data.quota.rate_source,
           reason: "",
         }
-      : { agent_slots: 1, sentinel_slots: 1 },
+      : {
+          agent_slots: 1,
+          sentinel_slots: 1,
+          memory_storage_bytes: 20971520,
+          embedding_daily_budget_brl: 1,
+        },
   });
   const mutation = useMutation({
     mutationFn: (values: z.infer<typeof schema>) =>
@@ -62,6 +73,11 @@ export function QuotaEditor({ data }: { data: TenantConfiguration }) {
             ["seats_limit", "Licenças contratadas"],
             ["agent_slots", "Capacidade de agentes ativos"],
             ["sentinel_slots", "Capacidade de sentinelas ativas"],
+            ["memory_storage_bytes", "Memória comercial (bytes)"],
+            [
+              "embedding_daily_budget_brl",
+              "Indexação de documentos por dia (BRL)",
+            ],
             ["ai_daily_budget_brl", "Orçamento diário (BRL)"],
             ["ai_monthly_budget_brl", "Orçamento mensal (BRL)"],
             ["usd_brl_rate", "Reais por dólar (USD/BRL)"],

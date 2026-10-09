@@ -1,3 +1,4 @@
+import { PortfolioPanel } from "@/features/agents/portfolio-panel";
 import {
   lazy,
   Suspense,
@@ -282,6 +283,7 @@ export function CommandCenterPage() {
           Esta conta não tem acesso ao Command Center.
         </NoticeBar>
       ) : null}
+      <PortfolioPanel />
       {data && degraded > 0 ? (
         <NoticeBar
           tone="warning"

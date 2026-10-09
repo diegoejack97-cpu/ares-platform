@@ -6,16 +6,28 @@ A ARES Platform é uma plataforma de inteligência comercial projetada para iden
 
 O objetivo não é vender apenas software. É localizar e recuperar valor que já existe no funil, mas se perde por demora, ausência de follow-up, propostas paradas, falta de responsável ou priorização incorreta.
 
-> **Status em 07/10/2026:** MVP do ARES Connect implementado e validado localmente para
+> **Status em 09/10/2026:** MVP do ARES Connect implementado e validado localmente para
 > demonstração assistida com dados sintéticos. A operação com dados de clientes depende
 > da homologação do CRM real e da validação do ambiente hospedado.
 >
 > **Primeiro produto:** ARES Connect.
 >
-> **Última entrega:** correções de autorização/RLS, rate limit por usuário e empresa,
-> atualização de dependências, CSP, proteção de webhooks e paginação do Event Journal.
-> O projeto contém **22 migrations**, aplicadas no Supabase local. O pacote Docker de
-> demonstração foi reconstruído e verificado em ambiente isolado.
+> **Última entrega:** fases 1–9 da evolução dos agentes: execução durável, triagem e diagnóstico separados e
+> contexto autorizado, consultas tipadas, métricas completas do espelho e cache por versão.
+> O chat reconsulta referências e responde totais sem depender do modelo.
+> Sentinelas têm filtros e agendas tipados, achados versionados e sino paginado com estados pessoais.
+> A interpretação por um agente Sentinela separado é opcional e começa desligada.
+> O sino abre conversa contextual com dados atuais, histórico paginado e feedback pessoal.
+> A rotina nova de análise começa desativada e exige liberação do administrador dentro do plano.
+> Priorização e Analista comercial produzem ranking e briefing de carteira com critérios e valores por moeda.
+> Recomendação e Follow-up são separados e geram propostas para aprovação humana na fila existente.
+> Agenda, cooldown e limites são configurados em Agentes; as novas rotinas começam desligadas.
+> Consulte a [entrega das fases 6 e 7](docs/commercial-agents-phase6-7-2026-10-09.md).
+> Memória comercial oferece recuperação citada, versões, permissões e consentimento explícito para embeddings.
+> Um agente separado avalia outcomes observados; opiniões e explicações não alteram valores financeiros.
+> Consulte a [entrega das fases 8 e 9](docs/memory-outcomes-phase8-9-2026-10-09.md).
+> O projeto contém **32 migrations**, aplicadas no Supabase local. O pacote Docker
+> validado em 07/10 precisa ser reconstruído para incluir esta nova entrega.
 
 ## Produtos e módulos
 
@@ -218,6 +230,18 @@ evolutivas não representam produtos homologados nesta entrega.
 
 ### Última validação
 
+Em **09/10/2026**, as fases 8 e 9 foram verificadas com dados sintéticos: 262 testes unitários, suíte PostgreSQL, 109 verificações pgTAP, typecheck e build. Memória e resultados foram verificados no navegador em desktop e celular. O relatório registra os testes repetidos após correções, os avisos existentes e as limitações de qualidade com modelos reais. [Evidências das fases 8 e 9](docs/memory-outcomes-phase8-9-2026-10-09.md).
+
+Em **08/10/2026**, as fases 1–5 passaram em **241 testes de backend sem integração**, **149
+testes PostgreSQL** e **56 contratos pgTAP**, além de Ruff e mypy. O frontend passou em
+**109 testes** e os painéis de diagnóstico e sentinelas foram verificados no navegador em desktop, tablet e celular.
+A validação final usa dados sintéticos, executores de teste e fallback sem chave; a qualidade com modelo real ainda exige piloto.
+A análise especializada começa desativada por empresa e não altera score, prioridade ou CRM.
+[Entrega e ativação da fase 3](docs/specialist-analysis-phase3-2026-10-08.md) e
+[sentinelas e notificações da fase 4](docs/sentinel-notifications-phase4-2026-10-08.md).
+O fluxo sino → chat foi validado no Chrome e no Firefox. [Entrega da fase 5](docs/finding-chat-phase5-2026-10-08.md).
+Consulta completa do espelho não certifica sincronização completa do CRM.
+
 Os números abaixo correspondem ao checkpoint de **07/10/2026**; são resultados locais,
 não uma certificação de produção ou garantia sobre qualquer implantação futura.
 
@@ -240,7 +264,7 @@ Detalhes e limites operacionais estão no [relatório de correções de seguran�
 ### Pendências para publicação e operação com clientes
 
 - [ ] Homologar o primeiro CRM real: adapter, credenciais, mapeamento, sync, reconciliação, conflitos e write-back.
-- [ ] Implantar e validar o ambiente hospedado: aplicar as 22 migrations, reconstruir serviços, configurar domínio/TLS, Auth, redirects, CORS, CSP e proxy confiável.
+- [ ] Implantar e validar o ambiente hospedado: aplicar as 27 migrations, reconstruir serviços, configurar domínio/TLS, Auth, redirects, CORS, CSP e proxy confiável.
 - [ ] Provisionar o operador real da Central Admin e os administradores das empresas; verificar MFA, recuperação de conta e revogação/expiração de sessões.
 - [ ] Configurar monitoramento, limites de tráfego no edge, backups e ensaiar a restauração completa do ambiente hospedado.
 - [ ] Validar contas, planos, cobrança, capacidades, orçamento de IA e conexões de cada empresa no destino.
@@ -256,6 +280,12 @@ CRM real e SaaS aberto ao público não foram declarados concluídos.
 - [Evolução conversacional do chat](docs/chat-conversation-2026-10-06.md).
 - [Auditoria local de segurança — diagnóstico anterior às correções](docs/security-audit-2026-10-07.md).
 - [Correções de segurança e evidências finais](docs/security-hardening-2026-10-07.md).
+- [Plano de evolução dos agentes de IA](docs/ai-agents-roadmap-2026-10-07.md).
+- [Fase 1 dos agentes — execução durável, validação e operação](docs/agent-execution-phase1-2026-10-08.md).
+- [Fase 2 dos agentes — contexto confiável, consultas e métricas completas](docs/trusted-context-phase2-2026-10-08.md).
+- [Fase 3 dos agentes — triagem e diagnóstico separados](docs/specialist-analysis-phase3-2026-10-08.md).
+- [Fase 4 — sentinelas configuráveis e notificações](docs/sentinel-notifications-phase4-2026-10-08.md).
+- [Fase 5 — sino e chat contextual](docs/finding-chat-phase5-2026-10-08.md).
 
 ---
 

@@ -137,7 +137,7 @@ def test_mixed_currencies_and_zero_values_are_not_silently_compared(chat):
     assert "BRL 0,00" in row["assistant_text"]
 
 
-def test_live_crm_stage_invalidates_stale_mirror_and_stage_filter(chat, monkeypatch):
+def test_chat_uses_synced_mirror_without_claiming_live_crm_completeness(chat, monkeypatch):
     db, user, service, _ = chat
     id_ = deal(db, user, "Espelho antigo", 500)
     connection = uuid4()
@@ -176,18 +176,28 @@ def test_live_crm_stage_invalidates_stale_mirror_and_stage_filter(chat, monkeypa
         def list_deals(self, **kwargs):
             return SimpleNamespace(items=[live], next_cursor=None)
 
-    monkeypatch.setattr("ares.chat.search.TenantCRMProvider", CRM)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Commercial totals must not consult partial live CRM pages")
+
+    monkeypatch.setattr("ares.connectors.resolver.TenantCRMProvider.list_deals", forbidden)
+    db.execute("update public.deals set connection_id=%s where id=%s", (connection, legacy))
+    db.execute("update public.deals set external_stage='won' where id=%s", (id_,))
     search = OpportunitySearch(service.settings)
     assert not json.loads(search.read(user, "qual a melhor oportunidade?")["content"])["matches"]
     assert not json.loads(search.read(user, "oportunidades em proposta")["content"])["matches"]
-    live.stage = "proposal"
-    live.value = 400
-    payload = json.loads(search.read(user, "qual a melhor oportunidade?")["content"])
+    db.execute(
+        "update public.deals set external_stage='proposal',value=400,"
+        "title='Fonte atual' where id=%s",
+        (id_,),
+    )
+    result = search.read(user, "qual a melhor oportunidade?")
+    payload = json.loads(result["content"])
     assert len(payload["matches"]) == 1
     assert payload["matches"][0]["id"] == str(id_)
-    assert set(payload["matches"][0]["record_ids"]) == {str(id_), str(legacy)}
-    assert payload["matches"][0]["value"] == 400
+    assert result["result"]["metrics"]["duplicate_rows"] == 1
+    assert str(payload["matches"][0]["value"]) == "400.00"
     assert payload["matches"][0]["title"] == "Fonte atual"
+    assert not result["metadata"]["crm_sync_complete"]
 
 
 def test_model_followup_receives_private_requests_and_fresh_selected_facts(chat, monkeypatch):
@@ -207,17 +217,15 @@ def test_model_followup_receives_private_requests_and_fresh_selected_facts(chat,
 
     class Agent:
         def __init__(self, **kwargs):
-            self.get_context = kwargs["tools"][0]
-            self.search = kwargs["tools"][1]
+            assert kwargs["tools"] == []
 
         def run(self, question, **kwargs):
-            seen["question"] = json.loads(question)
-            seen["facts"] = json.loads(self.get_context())
-            retry = json.loads(self.search())
+            snapshot = json.loads(question)
+            seen["question"] = json.loads(snapshot["request"])
+            seen["facts"] = snapshot["snapshot"]
             assert not any(
-                item.get("title") == "Novo fora da conversa" for item in retry["matches"]
+                item.get("title") == "Novo fora da conversa" for item in seen["facts"]["matches"]
             )
-            yield SimpleNamespace(event="ToolCallCompleted")
             yield SimpleNamespace(
                 event="RunContent", content="Beta tem valor atualizado de BRL 350,00."
             )
@@ -235,7 +243,7 @@ def test_model_followup_receives_private_requests_and_fresh_selected_facts(chat,
     assert "BRL 350,00" in row["assistant_text"]
 
 
-def test_agent_reframes_freeform_question_instead_of_declaring_no_opportunities(chat, monkeypatch):
+def test_supervisor_prepares_freeform_context_without_model_retrieval(chat, monkeypatch):
     db, user, service, seed = chat
     id_ = deal(db, user, "Contrato Alfa", 700)
     other, _ = seed()
@@ -250,19 +258,10 @@ def test_agent_reframes_freeform_question_instead_of_declaring_no_opportunities(
 
     class Agent:
         def __init__(self, **kwargs):
-            self.initial, self.search = kwargs["tools"]
-            assert kwargs["tool_call_limit"] == 3
+            assert kwargs["tools"] == [] and kwargs["tool_call_limit"] == 0
 
         def run(self, question, **kwargs):
-            seen["initial"] = json.loads(self.initial())
-            assert (
-                json.loads(self.search(name="Alfa", stage="proposal"))["error"]
-                == "invalid_search_filters"
-            )
-            seen["fresh"] = json.loads(self.search())
-            self.search(stage="proposal")
-            assert json.loads(self.search())["error"] == "search_limit"
-            yield SimpleNamespace(event="ToolCallCompleted")
+            seen["fresh"] = json.loads(question)["snapshot"]
             yield SimpleNamespace(
                 event="RunContent",
                 content="Contrato Alfa: BRL 700,00. Deseja analisar por valor ou urgência?",
@@ -272,11 +271,10 @@ def test_agent_reframes_freeform_question_instead_of_declaring_no_opportunities(
     monkeypatch.setattr("ares.chat.service.Agent", Agent)
     prepared, row = send(service, user, "Onde concentro meus esforços comerciais nesta semana?")
     assert "model_input" in prepared
-    assert not seen["initial"]["matches"]
     assert str(id_) in [item.get("id") for item in seen["fresh"]["matches"]]
     assert not any(
         item.get("title") == "Contrato de outra empresa" for item in seen["fresh"]["matches"]
     )
     assert "Contrato de outra empresa" not in row["assistant_text"]
-    assert len(row["context_json"]["retrieval_history"]) == 3
-    assert any(tool["name"] == "search_opportunities" for tool in row["tool_calls_json"])
+    assert row["context_json"]["metadata"]["query"]["name"] is None
+    assert row["tool_calls_json"] == [{"name": "context_builder", "status": "completed"}]

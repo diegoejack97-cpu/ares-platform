@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 from contextlib import suppress
@@ -9,6 +10,8 @@ import httpx
 import psycopg
 from psycopg.rows import dict_row
 
+from ares.agents.commercial_service import CommercialService
+from ares.agents.runtime import AgentRuntime
 from ares.config import get_settings
 from ares.connectors.http_fake_crm import CRMProviderRequestError
 from ares.connectors.provider import CRMProvider
@@ -68,10 +71,28 @@ class TickWorker:
                 return TickResult(acquired=False)
 
             try:
-                jobs = self._claim_jobs(batch_size, job_kinds)
+                jobs: list[dict[str, Any]] = []
                 succeeded = 0
                 failed = 0
-                for job in jobs:
+                if batch_size > 0 and (job_kinds is None or "agent.execute" in job_kinds):
+                    settings = get_settings()
+                    runtime = AgentRuntime(
+                        self._database_url,
+                        model_id=settings.openai_model,
+                        api_key=settings.openai_api_key.get_secret_value(),
+                        worker_name=self._worker_name,
+                        max_concurrent=settings.agent_max_concurrent_per_tenant,
+                    )
+                    # Reserve one turn before claiming legacy jobs, so a full
+                    # projection queue cannot starve a five-minute agent chain.
+                    receipt = runtime.process_next()
+                    if receipt is not None:
+                        succeeded += int(receipt.succeeded)
+                        failed += int(not receipt.succeeded)
+                        jobs.append({"kind": "agent.execute"})
+                legacy_jobs = self._claim_jobs(max(0, batch_size - len(jobs)), job_kinds)
+                jobs.extend(legacy_jobs)
+                for job in legacy_jobs:
                     try:
                         self._process_job(job)
                     except Exception as error:  # noqa: BLE001 - durable failure boundary
@@ -81,6 +102,14 @@ class TickWorker:
                         succeeded += 1
                 should_scan = job_kinds is None if scan_sentinels is None else scan_sentinels
                 findings = SentinelService(self._database_url).scan_sync() if should_scan else 0
+                if should_scan:
+                    settings = get_settings()
+                    CommercialService(self._database_url, settings.openai_model).scan()
+                    from ares.impact.evaluation import OutcomeService
+                    from ares.knowledge.service import KnowledgeService
+
+                    KnowledgeService(self._database_url).expire()
+                    OutcomeService(self._database_url).scan()
                 self._record_tick(
                     correlation_id,
                     acquired=True,
@@ -104,6 +133,7 @@ class TickWorker:
                   select id
                   from public.jobs
                   where (status = 'queued' or (status='running' and lease_until < now()))
+                    and kind <> 'agent.execute'
                     and run_after <= now()
                     and (%s::text[] is null or kind = any(%s::text[]))
                   order by run_after, created_at
@@ -123,6 +153,23 @@ class TickWorker:
         return [dict(row) for row in rows]
 
     def _process_job(self, job: dict[str, Any]) -> None:
+        if job["kind"] in {"memory.index", "outcome.evaluate"}:
+            from ares.impact.evaluation import OutcomeService
+            from ares.knowledge.service import KnowledgeService
+
+            settings = get_settings()
+            payload = {**job["payload"], "recovered": job["attempts"] > 1}
+            if job["kind"] == "memory.index":
+                KnowledgeService(
+                    self._database_url, settings.openai_api_key.get_secret_value()
+                ).index(UUID(str(job["tenant_id"])), payload)
+            else:
+                OutcomeService(
+                    self._database_url,
+                    settings.openai_model,
+                    settings.openai_api_key.get_secret_value(),
+                ).process(UUID(str(job["tenant_id"])), payload)
+            return
         if job["kind"] == "integration.sync":
             settings = get_settings()
             settings = settings.model_copy(update={"database_url": self._database_url})
@@ -134,6 +181,85 @@ class TickWorker:
             ) as provider:
                 IntegrationService(self._database_url, job["tenant_id"], provider).process_job(job)
             return
+        elif job["kind"] == "commercial.analyze":
+            settings = get_settings()
+            CommercialService(
+                self._database_url,
+                settings.openai_model,
+                settings.openai_api_key.get_secret_value(),
+            ).process(
+                UUID(str(job["tenant_id"])), {**job["payload"], "recovered": job["attempts"] > 1}
+            )
+        elif job["kind"] == "commercial.propose":
+            from ares.auth.models import AuthenticatedUser
+            from ares.decision.proposal_agents import decision_fingerprint_on
+
+            tenant = UUID(str(job["tenant_id"]))
+            with psycopg.connect(self._database_url, row_factory=dict_row) as connection:
+                proposal = connection.execute(
+                    "select * from public.commercial_proposals where tenant_id=%s and id=%s for update",
+                    (tenant, job["payload"]["proposal_id"]),
+                ).fetchone()
+                if not proposal or proposal["status"] not in {"queued", "running"}:
+                    return
+                if proposal["status"] == "running":
+                    connection.execute(
+                        "update public.commercial_proposals set status='failed',error_code='proposal_outcome_unknown' where tenant_id=%s and id=%s",
+                        (tenant, proposal["id"]),
+                    )
+                    return
+                user = AuthenticatedUser(
+                    tenant_id=tenant, user_id=proposal["actor_id"], role="admin"
+                )
+                role, config = CommercialService(self._database_url).config_on(
+                    connection, user, execute=True
+                )
+                user = user.model_copy(update={"role": role})
+                if (
+                    not config
+                    or not config["proactive_enabled"]
+                    or not config["recommendations_enabled"]
+                    or decision_fingerprint_on(connection, tenant, proposal["opportunity_id"])
+                    != proposal["context_hash"]
+                ):
+                    raise ExecutionBlocked("proposal_context_stale")
+                connection.execute(
+                    "update public.commercial_proposals set status='running' where tenant_id=%s and id=%s",
+                    (tenant, proposal["id"]),
+                )
+            settings = get_settings()
+            proposal_provider = self._provider or TenantCRMProvider(
+                settings.model_copy(update={"database_url": self._database_url}), tenant
+            )
+            try:
+                result = DecisionService(
+                    self._database_url,
+                    tenant,
+                    proposal_provider,
+                    openai_api_key=settings.openai_api_key.get_secret_value(),
+                    openai_model=settings.openai_model,
+                ).create_recommendation_sync(proposal["opportunity_id"], str(user.user_id))
+            except Exception:
+                with psycopg.connect(self._database_url) as connection:
+                    connection.execute(
+                        "update public.commercial_proposals set status='failed',error_code='proposal_generation_failed' where tenant_id=%s and id=%s",
+                        (tenant, proposal["id"]),
+                    )
+                raise
+            with psycopg.connect(self._database_url) as connection:
+                connection.execute(
+                    "update public.commercial_proposals set status='finished',recommendation_id=%s where tenant_id=%s and id=%s",
+                    (result["recommendation_id"], tenant, proposal["id"]),
+                )
+        elif job["kind"] == "sentinel.interpret":
+            from ares.sentinels.interpreter import SentinelInterpreter
+
+            settings = get_settings()
+            SentinelInterpreter(
+                self._database_url,
+                settings.openai_model,
+                settings.openai_api_key.get_secret_value(),
+            ).process(UUID(str(job["tenant_id"])), job["payload"])
         elif job["kind"] == "integration.project":
             IntelligenceService(self._database_url, job["tenant_id"]).process_event_sync(
                 UUID(job["payload"]["event_id"])

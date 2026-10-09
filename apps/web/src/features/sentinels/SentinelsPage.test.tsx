@@ -10,6 +10,8 @@ import {
   createSentinelRule,
   getSentinelCatalog,
   saveSentinelRule,
+  previewSentinelRule,
+  getSentinelOptions,
 } from "./api";
 
 vi.mock("./api", () => ({
@@ -17,6 +19,10 @@ vi.mock("./api", () => ({
   createSentinelRule: vi.fn(),
   saveSentinelRule: vi.fn(),
   archiveSentinelRule: vi.fn(),
+  previewSentinelRule: vi.fn(),
+  getSentinelOptions: vi
+    .fn()
+    .mockResolvedValue({ members: [], agent_slots: 0, truncated: false }),
 }));
 vi.mock("@/features/provider/account-api", () => ({ account: vi.fn() }));
 vi.mock("@/features/auth/auth-context", () => ({
@@ -68,6 +74,11 @@ beforeEach(() => {
     timezone: "America/Sao_Paulo",
   });
   vi.mocked(account).mockResolvedValue({ role: "admin" });
+  vi.mocked(getSentinelOptions).mockResolvedValue({
+    members: [],
+    agent_slots: 2,
+    truncated: false,
+  });
   vi.mocked(createSentinelRule).mockResolvedValue(schedule);
   vi.mocked(saveSentinelRule).mockResolvedValue(schedule);
 });
@@ -147,4 +158,45 @@ test("capacity stops activation when plan has no free slot", async () => {
   expect(
     screen.getByText(/Pause outra regra antes de ativar/),
   ).toBeInTheDocument();
+});
+
+test("administrator previews exact times and zero value without saving a rule", async () => {
+  const user = userEvent.setup();
+  vi.mocked(previewSentinelRule).mockResolvedValue({
+    matched_count: 1,
+    truncated: false,
+    ai_called: false,
+    items: [
+      {
+        opportunity_id: "opp-1",
+        title: "Caso de teste",
+        due_at: "2026-10-08T12:00:00Z",
+      },
+    ],
+  });
+  mount();
+  await screen.findByText("SLA vencido");
+  await user.click(screen.getByRole("button", { name: "Criar sentinela" }));
+  await user.type(screen.getByLabelText("Nome da regra"), "Propostas em risco");
+  await user.selectOptions(screen.getByLabelText("Modo da agenda"), "times");
+  await user.type(
+    screen.getByLabelText("Horários (separados por vírgula)"),
+    "09:00, 14:00",
+  );
+  await user.type(screen.getByLabelText("Moeda"), "BRL");
+  await user.type(screen.getByLabelText("Valor mínimo"), "0");
+  await user.click(
+    screen.getByRole("button", { name: "Testar critérios sem salvar" }),
+  );
+  await screen.findByText("1 oportunidades correspondem aos critérios.");
+  expect(previewSentinelRule).toHaveBeenCalledWith(
+    expect.objectContaining({
+      interval_minutes: 1440,
+      criteria: expect.objectContaining({ currency: "BRL", min_value: "0" }),
+      calendar: expect.objectContaining({
+        execution_times: ["09:00", "14:00"],
+      }),
+    }),
+  );
+  expect(createSentinelRule).not.toHaveBeenCalled();
 });

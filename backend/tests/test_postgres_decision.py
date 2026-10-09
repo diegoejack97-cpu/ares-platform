@@ -224,6 +224,10 @@ def test_m3_http_contract_returns_409_and_executes_via_background_worker(
     # This test exercises the optional development background runner explicitly;
     # the operator's local .env may correctly disable it in favor of the daemon.
     monkeypatch.setattr("ares.api.app.settings.background_execution", True)
+    # Keep this HTTP/worker contract independent of operator CRM credentials.
+    # Persistence is real PostgreSQL; only the external provider is synthetic.
+    monkeypatch.setattr("ares.api.app.settings.event_journal_backend", "memory")
+    monkeypatch.setattr("ares.api.app.crm_provider", FakeCRMProvider("test-secret"))
     now = datetime.now(UTC)
     journal = PostgresEventJournal(DATABASE_URL, TENANT_ID)
     intelligence = IntelligenceService(DATABASE_URL, TENANT_ID)
@@ -267,7 +271,7 @@ def test_m3_http_contract_returns_409_and_executes_via_background_worker(
         f"/api/v1/recommendations/{rec['id']}/decide",
         json={"verdict": "approved", "expected_version": rec["version"] + 1},
     )
-    assert stale.status_code == 409
+    assert stale.status_code == 409, stale.json()
     assert stale.json()["detail"]["code"] == "stale_recommendation"
 
     # The HTTP background task uses the real durable claim/execute implementation.

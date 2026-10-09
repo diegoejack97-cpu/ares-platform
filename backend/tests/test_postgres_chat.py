@@ -54,12 +54,10 @@ def test_scoped_chat_stream_persists_tools_usage_and_history(fixture, monkeypatc
 
     class FakeAgent:
         def __init__(self, **kwargs):
-            self.tools = kwargs["tools"]
+            assert kwargs["tools"] == [] and kwargs["tool_call_limit"] == 0
 
         def run(self, *args, **kwargs):
-            yield SimpleNamespace(event="ToolCallStarted")
-            self.tools[0]()
-            yield SimpleNamespace(event="ToolCallCompleted")
+            assert "snapshot" in json.loads(args[0])
             yield SimpleNamespace(event="RunContent", content="Sem eventos neste recorte.")
             yield SimpleNamespace(
                 event="RunCompleted",
@@ -77,7 +75,7 @@ def test_scoped_chat_stream_persists_tools_usage_and_history(fixture, monkeypatc
     assert "event: tool" in stream and "event: token" in stream and "event: done" in stream
     history = service.history(user, row["opportunity_id"])["items"]
     assert len(history) == 1 and history[0]["status"] == "succeeded"
-    assert len(history[0]["tool_calls_json"]) == 2
+    assert history[0]["tool_calls_json"] == [{"name": "context_builder", "status": "completed"}]
     assert service.history(other, row["opportunity_id"])["items"] == []
     assert (
         db.execute(
@@ -170,7 +168,7 @@ def test_general_question_returns_available_records_without_model(fixture, monke
         yield db
 
     monkeypatch.setattr("ares.chat.service.psycopg.connect", connection)
-    monkeypatch.setattr("ares.chat.search.psycopg.connect", connection)
+    monkeypatch.setattr("ares.intelligence.context_builder.psycopg.connect", connection)
     monkeypatch.setattr("ares.ai.usage.psycopg.connect", connection)
     service = ChatService(Settings(openai_api_key=SecretStr("")))
     prepared = service.prepare(user, None, "me dê alguns dados sobre as oportunidades disponíveis")
@@ -220,11 +218,10 @@ def test_unscoped_search_stream_persists_evidence_without_writing_crm(fixture, m
 
     class FakeAgent:
         def __init__(self, **kwargs):
-            self.get_context = kwargs["tools"][0]
+            assert kwargs["tools"] == []
 
         def run(self, *args, **kwargs):
-            self.get_context()
-            yield SimpleNamespace(event="ToolCallCompleted")
+            assert "Oportunidade de teste" in args[0]
             yield SimpleNamespace(event="RunContent", content="Oportunidade de teste.")
             yield SimpleNamespace(event="RunCompleted", metrics=None)
 

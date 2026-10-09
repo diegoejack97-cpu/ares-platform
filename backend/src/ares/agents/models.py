@@ -7,7 +7,7 @@ from pydantic import BaseModel
 class AgentMetrics(BaseModel):
     agent_name: str
     agent_version: str
-    generation_mode: Literal["agno_openai", "deterministic_fallback"]
+    generation_mode: Literal["agno_openai", "deterministic_fallback", "openai_embeddings"]
     model_id: str | None
     runs: int
     running: int

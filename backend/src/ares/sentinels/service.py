@@ -1,4 +1,6 @@
 """Durable, tenant-scoped sentinels with typed, administrator-owned rules."""
+# SQL statements remain complete for review.
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -12,7 +14,9 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ares.auth.models import AuthenticatedUser
+from ares.sentinels.findings import scan_schedule
 from ares.sentinels.models import SentinelRuleCommand, SentinelScheduleCommand
+from ares.sentinels.scheduling import next_calendar_at
 
 RULE_ID = "SENTINEL-SLA-OVERDUE"
 RULE_VERSION = "1"
@@ -85,7 +89,12 @@ class SentinelService:
             "enabled": row["enabled"],
             "interval_minutes": row["interval_minutes"],
             "start_time_local": row["start_time_local"],
-            "timezone": row["timezone"],
+            "timezone": row.get("calendar_json", {}).get("timezone") or row["timezone"],
+            "criteria": row.get("criteria_json", {}),
+            "calendar": row.get("calendar_json", {}),
+            "interpret_with_ai": row.get("interpret_with_ai", False),
+            "last_error_code": row.get("last_error_code"),
+            "last_matched_count": row.get("last_matched_count"),
             "next_run_at": row["next_run_at"] if can_run else None,
             "last_run_at": row["last_run_at"],
             "last_created_count": row["last_created_count"],
@@ -162,11 +171,26 @@ class SentinelService:
             ):
                 return self._schedule_payload(row)
 
-            next_run = next_scheduled_at(
+            calendar = row.get("calendar_json", {})
+            try:
+                expanded = SentinelRuleCommand(
+                    title=row["title"],
+                    kind=row["kind"],
+                    threshold_hours=row["threshold_hours"],
+                    enabled=command.enabled,
+                    interval_minutes=command.interval_minutes,
+                    start_time_local=command.start_time_local,
+                    reason=command.reason,
+                    calendar=calendar,
+                )
+            except ValueError as error:
+                raise SentinelScheduleConflict("sentinel_calendar_conflict") from error
+            next_run = next_calendar_at(
                 datetime.now(UTC),
                 row["timezone"],
                 command.start_time_local,
                 command.interval_minutes,
+                expanded.calendar,
             )
             updated = connection.execute(
                 """
@@ -272,6 +296,9 @@ class SentinelService:
             "start_time_local": row["start_time_local"].isoformat(),
             "archived_at": row["archived_at"].isoformat() if row["archived_at"] else None,
             "version": row["version"],
+            "criteria": row.get("criteria_json", {}),
+            "calendar": row.get("calendar_json", {}),
+            "interpret_with_ai": row.get("interpret_with_ai", False),
         }
 
     def save_rule_sync(
@@ -326,9 +353,29 @@ class SentinelService:
             if command.enabled and active_count >= quota["sentinel_slots"]:
                 raise SentinelScheduleConflict("sentinel_capacity_unavailable")
             now = datetime.now(UTC)
-            next_run = next_scheduled_at(
-                now, quota["timezone"], command.start_time_local, command.interval_minutes
+            next_run = next_calendar_at(
+                now,
+                quota["timezone"],
+                command.start_time_local,
+                command.interval_minutes,
+                command.calendar,
             )
+            if (
+                command.criteria.owner_user_id
+                and not connection.execute(
+                    "select 1 from public.memberships where tenant_id=%s and user_id=%s and active",
+                    (tenant_id, command.criteria.owner_user_id),
+                ).fetchone()
+            ):
+                raise SentinelScheduleConflict("sentinel_owner_unavailable")
+            if (
+                command.interpret_with_ai
+                and not connection.execute(
+                    "select 1 from public.tenant_quotas where tenant_id=%s and agent_slots>=1",
+                    (tenant_id,),
+                ).fetchone()
+            ):
+                raise SentinelScheduleConflict("sentinel_agent_capacity_unavailable")
             if previous is None:
                 rule_id = f"SENTINEL-{uuid4()}"
                 updated = connection.execute(
@@ -373,6 +420,17 @@ class SentinelService:
                     ),
                 ).fetchone()
             assert updated is not None
+            updated = connection.execute(
+                "update public.sentinel_schedules set criteria_json=%s,calendar_json=%s,interpret_with_ai=%s,last_error_code=null where tenant_id=%s and rule_id=%s returning *",
+                (
+                    Jsonb(command.criteria.model_dump(mode="json")),
+                    Jsonb(command.calendar.model_dump(mode="json")),
+                    command.interpret_with_ai,
+                    tenant_id,
+                    rule_id,
+                ),
+            ).fetchone()
+            assert updated is not None
             connection.execute(
                 """
                 insert into public.sentinel_schedule_audit
@@ -416,6 +474,14 @@ class SentinelService:
                 """,
                 (actor_id, tenant_id, rule_id),
             ).fetchone()
+            from ares.sentinels.findings import event
+
+            retired = connection.execute(
+                "update public.sentinel_findings set status='superseded',revision=revision+1,updated_at=now(),resolved_at=now(),interpretation_status='superseded' where tenant_id=%s and rule_id=%s and status in ('open','updated') returning *",
+                (tenant_id, rule_id),
+            ).fetchall()
+            for finding in retired:
+                event(connection, finding, previous)
             connection.execute(
                 """
                 insert into public.sentinel_schedule_audit
@@ -439,8 +505,7 @@ class SentinelService:
             connection.execute("set local statement_timeout='5s'")
             schedules = connection.execute(
                 """
-                select s.tenant_id, s.rule_id, s.kind, s.threshold_hours,
-                       s.interval_minutes, s.start_time_local, t.timezone
+                select s.*, t.timezone
                 from public.sentinel_schedules s
                 join (
                   select tenant_id,rule_id,
@@ -466,74 +531,47 @@ class SentinelService:
             ).fetchall()
             per_tenant_limit = max(1, SCAN_LIMIT // max(1, len(schedules)))
             for schedule in schedules:
-                due_expression = _DUE_EXPRESSIONS[schedule["kind"]]
-                predicate = _RULE_PREDICATES[schedule["kind"]]
-                created_row = connection.execute(
-                    f"""
-                    with candidates as (
-                      select o.tenant_id, o.id opportunity_id, o.deal_id,
-                             {due_expression} due_at,
-                             o.sla_at, o.updated_at, o.state, o.priority,
-                             o.score, o.correlation_id
-                      from public.ares_opportunities o
-                      where o.tenant_id=%s and o.state<>'closed'
-                        and {predicate} and {due_expression}<=now()
-                        and not exists (
-                          select 1 from public.sentinel_findings f
-                          where f.tenant_id=o.tenant_id and f.opportunity_id=o.id
-                            and f.rule_id=%s and f.due_at={due_expression}
-                        )
-                      order by due_at, o.id limit %s
-                    ), inserted as (
-                      insert into public.sentinel_findings
-                        (tenant_id,opportunity_id,rule_id,rule_version,due_at,
-                         evidence,correlation_id)
-                      select c.tenant_id,c.opportunity_id,%s,%s,c.due_at,
-                        jsonb_build_object(
-                          'opportunity_id',c.opportunity_id,
-                          'deal_id',c.deal_id,'sla_at',c.sla_at,
-                          'opportunity_updated_at',c.updated_at,
-                          'state',c.state,'priority',c.priority,'score',c.score,
-                          'kind',%s::text,'threshold_hours',%s::integer
-                        ),coalesce(c.correlation_id,gen_random_uuid())
-                      from candidates c
-                      on conflict (tenant_id,opportunity_id,rule_id,due_at)
-                        do nothing returning id
-                    )
-                    select count(*)::integer created from inserted
-                    """,
-                    (
-                        schedule["threshold_hours"],
-                        schedule["tenant_id"],
-                        schedule["threshold_hours"],
-                        schedule["rule_id"],
-                        schedule["threshold_hours"],
-                        per_tenant_limit,
-                        schedule["rule_id"],
-                        RULE_VERSION,
-                        schedule["kind"],
-                        schedule["threshold_hours"],
-                    ),
-                ).fetchone()
-                created = int(created_row["created"]) if created_row else 0
-                total += created
-                next_run = next_scheduled_at(
-                    datetime.now(UTC),
+                from ares.sentinels.models import SentinelCalendar
+                from ares.sentinels.scheduling import calendar_allows
+
+                calendar = SentinelCalendar.model_validate(schedule["calendar_json"])
+                now = datetime.now(UTC)
+                next_run = next_calendar_at(
+                    now,
                     schedule["timezone"],
                     schedule["start_time_local"],
                     schedule["interval_minutes"],
+                    calendar,
                 )
-                # Drain a full bounded batch before waiting for the next scheduled slot.
-                # Deduplication prevents repeating findings; other overdue schedules stay ahead.
-                if created >= per_tenant_limit:
-                    next_run = datetime.now(UTC) + timedelta(seconds=10)
+                if not calendar_allows(
+                    now, schedule["timezone"], schedule["start_time_local"], calendar
+                ):
+                    connection.execute(
+                        "update public.sentinel_schedules set next_run_at=%s where tenant_id=%s and rule_id=%s",
+                        (next_run, schedule["tenant_id"], schedule["rule_id"]),
+                    )
+                    continue
+                try:
+                    with connection.transaction():
+                        created, matched, exhausted = scan_schedule(
+                            connection, schedule, per_tenant_limit
+                        )
+                except (psycopg.Error, ValueError):
+                    connection.execute(
+                        "update public.sentinel_schedules set last_error_code='sentinel_scan_failed',last_run_at=now(),next_run_at=now()+interval '1 minute' where tenant_id=%s and rule_id=%s",
+                        (schedule["tenant_id"], schedule["rule_id"]),
+                    )
+                    continue
+                total += created
+                if exhausted:
+                    next_run = now + timedelta(seconds=10)
                 connection.execute(
                     """
                     update public.sentinel_schedules
-                    set next_run_at=%s,last_run_at=now(),last_created_count=%s
+                    set next_run_at=%s,last_run_at=now(),last_created_count=%s,last_matched_count=%s,last_error_code=null
                     where tenant_id=%s and rule_id=%s
                     """,
-                    (next_run, created, schedule["tenant_id"], schedule["rule_id"]),
+                    (next_run, created, matched, schedule["tenant_id"], schedule["rule_id"]),
                 )
                 connection.execute(
                     """
@@ -543,6 +581,54 @@ class SentinelService:
                     (schedule["tenant_id"], schedule["rule_id"], created),
                 )
         return total
+
+    def preview_sync(self, user: AuthenticatedUser, command: SentinelRuleCommand) -> dict[str, Any]:
+        """Audit a bounded dry run; capacity applies, no findings, model or CRM writes."""
+        from ares.decision.execution_guard import check_execution_contract
+        from ares.sentinels.findings import candidates
+        from ares.sentinels.notifications import scope_on
+
+        with psycopg.connect(self._database_url, row_factory=dict_row) as db:
+            db.execute("set local statement_timeout='5s'")
+            scope_on(db, user, admin=True)
+            check_execution_contract(db, user.tenant_id)
+            quota = db.execute(
+                "select sentinel_slots from public.tenant_quotas where tenant_id=%s",
+                (user.tenant_id,),
+            ).fetchone()
+            if not quota or quota["sentinel_slots"] < 1:
+                raise SentinelScheduleConflict("sentinel_capacity_unavailable")
+            schedule = {
+                **command.model_dump(),
+                "tenant_id": user.tenant_id,
+                "rule_id": "preview",
+                "version": 1,
+                "criteria_json": command.criteria.model_dump(mode="json"),
+            }
+            rows, count = candidates(db, schedule, 10, changed_only=False)
+            db.execute(
+                "insert into public.audit_log(tenant_id,actor_type,actor_id,action,correlation_id,source,data) values(%s,'user',%s,'sentinel.preview',%s,'ares',%s)",
+                (
+                    user.tenant_id,
+                    user.user_id,
+                    uuid4(),
+                    Jsonb({"matched_count": count, "kind": command.kind}),
+                ),
+            )
+            return {
+                "matched_count": count,
+                "items": [
+                    {
+                        "opportunity_id": row["opportunity_id"],
+                        "title": row["observed"].get("title"),
+                        "due_at": row["due_at"],
+                    }
+                    for row in rows
+                ],
+                "truncated": count > len(rows),
+                "source": "ARES Core / teste sem efeitos",
+                "ai_called": False,
+            }
 
     def list_sync(
         self, tenant_id: UUID, *, limit: int = 25, reader: AuthenticatedUser | None = None

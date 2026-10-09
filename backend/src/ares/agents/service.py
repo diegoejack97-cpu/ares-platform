@@ -95,7 +95,9 @@ class AgentTransparencyService:
                         if row["cost_samples"]
                         else "not_instrumented"
                     ),
-                    "autonomy": "read_only" if row["agent_name"] == "chat" else "proposal_only",
+                    "autonomy": "read_only"
+                    if row["agent_name"] in {"chat", "context-triage", "context-diagnosis"}
+                    else "proposal_only",
                 }
                 for row in rows
             ],

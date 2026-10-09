@@ -13,7 +13,7 @@ from ares.ai.budget import AIBudgetGuard
 from ares.ai.models import response_model
 from ares.ai.quotas import estimate_usd
 from ares.ai.usage import UsageObservation, observe
-from ares.decision.model_output import ModelRecommendationOutput
+from ares.decision.model_output import ModelFollowupOutput, ModelRecommendationOutput
 from ares.decision.models import (
     ActionAlternative,
     ActionDraft,
@@ -40,6 +40,7 @@ class ModelResult:
     status: str
     error_code: str | None = None
     usage: UsageObservation = UsageObservation()
+    output_schema_version: str = "recommendation.v1"
 
 
 class RecommendationModelFactory:
@@ -84,19 +85,42 @@ class RecommendationModelFactory:
             agent = Agent(
                 name="ARES Follow-up Agent",
                 model=response_model(self._model_id, self._api_key),
-                instructions=SYSTEM_RULES,
+                instructions=SYSTEM_RULES
+                + (
+                    [
+                        "Triage was already validated by a separate agent. "
+                        "Do not classify urgency or generate triage; "
+                        "use validated_triage only as interpretation, not as new facts."
+                    ]
+                    if context.get("validated_triage")
+                    else []
+                ),
                 tools=[],
-                output_schema=ModelRecommendationOutput,
+                output_schema=ModelFollowupOutput
+                if context.get("validated_triage")
+                else ModelRecommendationOutput,
                 telemetry=False,
             )
             response = agent.run(prompt)
             usage = observe(response.metrics, self._model_id)
             content = response.content
-            if isinstance(content, ModelRecommendationOutput):
+            if isinstance(content, ModelFollowupOutput):
                 content = content.model_dump(exclude_none=True)
+            if context.get("validated_triage"):
+                if not isinstance(content, dict):
+                    raise ValueError("followup_output_invalid")
+                content = {**content, "triage": context["validated_triage"]}
             output = RecommendationOutput.model_validate(content)
             return ModelResult(
-                output, "agno_openai", self._model_id, prompt_hash, "succeeded", usage=usage
+                output,
+                "agno_openai",
+                self._model_id,
+                prompt_hash,
+                "succeeded",
+                usage=usage,
+                output_schema_version="recommendation.v2"
+                if context.get("validated_triage")
+                else "recommendation.v1",
             )
         except Exception as error:  # noqa: BLE001 - safe degradation boundary
             return replace(
@@ -120,6 +144,8 @@ class RecommendationModelFactory:
             reason=f"Prioridade P{priority} e score {score:.0%} exigem acompanhamento humano.",
             evidence_refs=signal_refs[:12],
         )
+        if context.get("validated_triage"):
+            triage = TriageOutput.model_validate(context["validated_triage"])
         output = RecommendationOutput(
             recommended_action=ActionDraft(
                 action_kind="create_task",
@@ -149,5 +175,13 @@ class RecommendationModelFactory:
             triage=triage,
         )
         return ModelResult(
-            output, "deterministic_fallback", None, prompt_hash, "degraded", error_code
+            output,
+            "deterministic_fallback",
+            None,
+            prompt_hash,
+            "degraded",
+            error_code,
+            output_schema_version="recommendation.v2"
+            if context.get("validated_triage")
+            else "recommendation.v1",
         )

@@ -120,6 +120,7 @@ def test_empty_retrieval_never_calls_the_model(monkeypatch):
     user = AuthenticatedUser(user_id=uuid4(), tenant_id=uuid4(), role="manager")
     observations = []
     monkeypatch.setattr(chat_service.OpportunitySearch, "read", lambda *_args: context)
+    monkeypatch.setattr(ChatService, "authorize", lambda *_args: None)
     monkeypatch.setattr(chat_service.psycopg, "connect", lambda *_args, **_kwargs: Db())
     monkeypatch.setattr(chat_service, "record_usage", lambda *_args: observations.append(_args[-1]))
     monkeypatch.setattr(

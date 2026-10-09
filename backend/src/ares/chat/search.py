@@ -12,13 +12,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import uuid4
 
-import psycopg
-from psycopg.rows import dict_row
-
 from ares.auth.models import AuthenticatedUser
 from ares.config import Settings
-from ares.connectors.http_fake_crm import CRMProviderRequestError
-from ares.connectors.resolver import TenantCRMProvider
 
 CONTEXT_LIMIT = 8000
 RESULT_LIMIT = 8
@@ -144,308 +139,34 @@ def make_context(
 
 
 class OpportunitySearch:
+    """Compatibility facade: the Context Builder owns all commercial reads."""
+
     def __init__(self, settings: Settings):
         self.settings = settings
 
     def read(
         self, user: AuthenticatedUser, question: str, references: list[str] | None = None
     ) -> dict[str, Any]:
-        terms = references if references is not None else search_terms(question)
-        criterion = comparison_criterion(question)
-        if references == []:
-            return make_context(
-                {"matches": [], "limitations": ["Esse item não existe no recorte anterior."]}
-            )
-        ordering = {
-            "value": "d.value desc nulls last,",
-            "lowest_value": "d.value asc nulls last,",
-            "urgency": "o.priority asc nulls last,o.score desc nulls last,",
-        }.get(criterion or "", "")
-        # Strip SQL wildcard semantics from the user terms. Values remain bound parameters.
-        patterns = [f"%{word.replace('_', '')}%" for word in terms]
-        stage_patterns = [
-            f"%{word}%" for term in terms for word in STAGE_ALIASES.get(term, (term,))
-        ]
-        if references is not None:
-            patterns, stage_patterns = [], []
-        with psycopg.connect(self.settings.database_url, row_factory=dict_row) as db:
-            db.execute("set local statement_timeout='5s'")
-            connections = db.execute(
-                "select id,provider,status from public.connections where tenant_id=%s",
-                (user.tenant_id,),
-            ).fetchall()
-            # Match folded titles as well as database/CRM/ARES IDs. No customer/contact payloads.
-            rows = db.execute(
-                "select d.id,d.title,d.status,d.value,d.currency,d.canonical_stage,d.external_stage,"
-                "d.source_changed_at,d.updated_at,coalesce(d.external_ref->>'id',d.external_id) external_id,"
-                "d.external_id namespaced_id,d.connection_id,d.external_ref->>'provider' stored_provider,"
-                "o.id opportunity_id,o.state opportunity_state,o.priority,o.score "
-                "from public.deals d left join lateral (select id,state,priority,score "
-                "from public.ares_opportunities where tenant_id=d.tenant_id and deal_id=d.id "
-                "order by updated_at desc,id limit 1) o on true "
-                "where d.tenant_id=%s and not d.is_missing "
-                "and (d.connection_id is null or exists(select 1 from public.connections c "
-                "where c.tenant_id=d.tenant_id and c.id=d.connection_id and c.status<>'revoked')) "
-                "and (%s or translate(lower(d.title),"
-                "'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc') like any(%s) "
-                "or d.id::text=any(%s) or o.id::text=any(%s) "
-                "or lower(coalesce(d.external_ref->>'id',d.external_id))=any(%s) "
-                "or lower(d.external_id)=any(%s) "
-                "or lower(coalesce(d.canonical_stage,'')) like any(%s) "
-                "or lower(coalesce(d.external_stage,'')) like any(%s)) "
-                "and (%s or (lower(coalesce(d.external_stage,d.canonical_stage,'')) "
-                "not in ('won','lost','ganho','perdido') "
-                "and lower(coalesce(d.status,'')) not in ('won','lost','closed','ganho','perdido','fechado'))) "
-                "order by (select count(*) from unnest(%s::text[]) term "
-                "where translate(lower(d.title),"
-                "'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc') "
-                "like '%%'||term||'%%') desc,"
-                + ordering
-                + "case when %s then coalesce(o.priority,0) else 0 end desc,"
-                "d.updated_at desc,d.id limit 101",
-                (
-                    user.tenant_id,
-                    not terms,
-                    patterns,
-                    terms,
-                    terms,
-                    terms,
-                    terms,
-                    stage_patterns,
-                    stage_patterns,
-                    criterion is None,
-                    terms,
-                    not terms,
-                ),
-            ).fetchall()
-            # Opportunities without a linked CRM deal are still discoverable by their ARES ID.
-            orphans = db.execute(
-                "select id opportunity_id,state opportunity_state,priority,updated_at "
-                "from public.ares_opportunities where tenant_id=%s and deal_id is null "
-                "and (%s or id::text=any(%s)) order by updated_at desc,id limit 9",
-                (user.tenant_id, not terms, terms),
-            ).fetchall()
+        from ares.intelligence.context_builder import ContextBuilder, ContextUnavailable
+        from ares.intelligence.queries import intent_from_question
 
-        def score(item: dict[str, Any]) -> int:
-            title = normalize(str(item.get("title", "")))
-            identifiers = {
-                str(item.get(key, ""))
-                for key in ("id", "external_id", "opportunity_id", "namespaced_id")
-            }
-            identifiers.update(str(ref) for ref in item.get("record_ids", []))
-            if references is not None:
-                return sum(10 for term in terms if term in identifiers)
-            stage = normalize(
-                f"{item.get('external_stage') or ''} {item.get('canonical_stage') or ''}"
-            )
-            return sum(
-                10
-                if term in identifiers
-                else int(
-                    term in title
-                    or any(alias in stage for alias in STAGE_ALIASES.get(term, (term,)))
+        try:
+            builder = ContextBuilder(self.settings.database_url)
+            intent = intent_from_question(question, references, timezone=builder.timezone(user))
+            result = builder.build(user, intent, purpose="chat")
+            if (
+                intent.name
+                and references is None
+                and not re.search(r"\b(nome|chamad[ao])\b", normalize(question))
+                and not result["result"].get("matches")
+            ):
+                # A free-form analytical sentence is not a business identifier.
+                # Explicit names and historical references never expand their scope.
+                result = builder.build(
+                    user, intent.model_copy(update={"name": None}), purpose="chat"
                 )
-                for term in terms
-            )
+            return result
+        except ContextUnavailable as error:
+            from ares.chat.service import ChatFailure
 
-        items = [{**dict(row), "source": "Banco ARES (espelho do CRM)"} for row in rows]
-        items.extend({**dict(row), "source": "Oportunidade ARES"} for row in orphans)
-        limitations: list[str] = []
-        crm_read = False
-        truncated = len(rows) > 100 or len(orphans) > RESULT_LIMIT
-        connection = next((row for row in connections if row["provider"] == "fake-crm-http"), None)
-        if connection and self.settings.environment == "development":
-            # The local journal's original FakeCRM IDs predate connection namespacing.
-            # Fold only that known development source into its configured HTTP sandbox.
-            for item in items:
-                if item.get("connection_id") is None and item.get("stored_provider") == "fake-crm":
-                    item["connection_id"] = connection["id"]
-        if connection and connection["status"] != "revoked":
-            if self.settings.environment in {"development", "demonstration"}:
-                provider = TenantCRMProvider(self.settings, user.tenant_id)
-                provider.connection_id = connection["id"]
-                try:
-                    cursor = None
-                    for _ in range(CRM_PAGE_LIMIT):
-                        page = provider.list_deals(cursor=cursor, limit=100)
-                        crm_read = True
-                        for deal in page.items:
-                            live: dict[str, Any] = {
-                                "external_id": deal.id,
-                                "connection_id": connection["id"],
-                                "title": deal.title[:160],
-                                "external_stage": deal.stage,
-                                "value": deal.value,
-                                "currency": deal.currency,
-                                "source_changed_at": deal.changed_at,
-                                "source": "CRM conectado · FakeCRM (dados sintéticos)",
-                            }
-                            mirrors = [
-                                row
-                                for row in items
-                                if row.get("external_id") == deal.id
-                                and row.get("connection_id") == connection["id"]
-                            ]
-                            if mirrors:
-                                # Live CRM wins for funnel fields; keep ARES identity separate.
-                                for mirror in mirrors:
-                                    mirror.update(live)
-                                    mirror.pop("status", None)
-                                    mirror.pop("canonical_stage", None)
-                            elif not terms or score(live):
-                                items.append(live)
-                        cursor = page.next_cursor
-                        if cursor is None:
-                            break
-                    if cursor is not None:
-                        truncated = True
-                        limitations.append(
-                            "CRM consultado até 500 negócios; há mais páginas não consultadas."
-                        )
-                except (CRMProviderRequestError, ValueError):
-                    limitations.append(
-                        "CRM indisponível nesta consulta; os dados salvos podem estar desatualizados."
-                    )
-            else:
-                limitations.append("Adaptador do CRM não configurado para este ambiente/empresa.")
-        else:
-            if any(row["status"] != "revoked" for row in connections):
-                limitations.append(
-                    "Adaptador de leitura do CRM não configurado para esta conexão; "
-                    "consulta limitada ao banco ARES."
-                )
-            else:
-                limitations.append(
-                    "Nenhuma conexão ativa com CRM disponível; consulta limitada ao banco ARES."
-                )
-        groups: dict[tuple[str, str], dict[str, Any]] = {}
-        for item in items:
-            key = (
-                (str(item.get("connection_id")), str(item.get("external_id")))
-                if item.get("external_id")
-                else ("record", str(item.get("id") or item.get("opportunity_id")))
-            )
-            prior = groups.get(key)
-            if prior is None:
-                groups[key] = item
-                continue
-            native = str(item.get("namespaced_id", "")).startswith(
-                str(item.get("connection_id")) + ":"
-            )
-            chosen = item if native else prior
-            chosen["record_ids"] = list(
-                dict.fromkeys(
-                    str(ref)
-                    for row in (prior, item)
-                    for ref in [row.get("id"), *row.get("record_ids", [])]
-                    if ref
-                )
-            )
-            chosen["ares_opportunity_ids"] = list(
-                dict.fromkeys(
-                    str(ref)
-                    for row in (prior, item)
-                    for ref in [row.get("opportunity_id"), *row.get("ares_opportunity_ids", [])]
-                    if ref
-                )
-            )
-            priorities = [
-                row["priority"] for row in (prior, item) if row.get("priority") is not None
-            ]
-            if priorities:
-                chosen["priority"] = min(priorities)
-            chosen["score"] = max(prior.get("score") or 0, item.get("score") or 0)
-            groups[key] = chosen
-        items = [item for item in groups.values() if not terms or score(item)]
-        if criterion:
-            items = [item for item in items if is_open(item)]
-        if criterion in {"value", "lowest_value"}:
-            # An ARES opportunity without a CRM deal is not a priced business.
-            items = [item for item in items if item.get("id") or item.get("external_id")]
-            items.sort(
-                key=lambda item: (numeric_value(item) is None, numeric_value(item) or Decimal(0)),
-                reverse=False,
-            )
-            if criterion == "value":
-                items = [item for item in items if numeric_value(item) is not None][::-1] + [
-                    item for item in items if numeric_value(item) is None
-                ]
-        elif criterion == "urgency":
-            items.sort(
-                key=lambda item: (
-                    item.get("priority") if item.get("priority") is not None else 4,
-                    -(item.get("score") or 0),
-                )
-            )
-        else:
-            items.sort(key=score, reverse=True)
-        currencies = list(
-            dict.fromkeys(item.get("currency") for item in items if numeric_value(item) is not None)
-        )
-        if criterion in {"value", "lowest_value"} and len(currencies) > 1:
-            leaders = [
-                next(
-                    item
-                    for item in items
-                    if item.get("currency") == currency and numeric_value(item) is not None
-                )
-                for currency in currencies
-            ]
-            items = leaders + [item for item in items if item not in leaders]
-        truncated = truncated or len(items) > RESULT_LIMIT
-        items = items[:RESULT_LIMIT]
-        for item in items:
-            if "title" in item:
-                item["title"] = str(item["title"])[:160]
-        payload = {
-            "search_query": question[:400],
-            "matches": items,
-            "limitations": limitations,
-            "criterion": criterion,
-            "currencies": currencies,
-            "interpretation": "Resultados por nome ou identificador; não representam totais do funil. "
-            "Negócio do CRM e Oportunidade ARES são entidades distintas. "
-            "Peça confirmação quando houver mais de um resultado possível.",
-        }
-        if (
-            criterion
-            and items
-            and (
-                (criterion == "urgency" and items[0].get("priority") is not None)
-                or (criterion != "urgency" and len(currencies) == 1 and None not in currencies)
-            )
-        ):
-            selected = items[0]
-            payload["selection"] = str(
-                selected.get("id") or selected.get("external_id") or selected.get("opportunity_id")
-            )
-        while (
-            len(json.dumps(payload, default=str, ensure_ascii=False).encode()) > CONTEXT_LIMIT - 300
-        ):
-            items.pop()
-            truncated = True
-        citations = [
-            {
-                "event_id": str(
-                    item.get("opportunity_id") or item.get("external_id") or item.get("id")
-                ),
-                "event_type": "crm.deal.read"
-                if "CRM conectado" in item["source"]
-                else "database.deal.read",
-                "occurred_at": str(item.get("source_changed_at") or item.get("updated_at") or ""),
-                "source": item["source"],
-                "source_ref": str(
-                    item.get("external_id") or item.get("id") or item.get("opportunity_id")
-                ),
-                "opportunity_id": str(item["opportunity_id"])
-                if item.get("opportunity_id")
-                else None,
-            }
-            for item in items
-        ]
-        return make_context(
-            payload,
-            source="Banco ARES + CRM conectado" if crm_read else "Banco ARES",
-            citations=citations,
-            truncated=truncated,
-        )
+            raise ChatFailure(error.code, error.status) from None

@@ -7,6 +7,13 @@ import type {
 } from "@/features/agents/contract";
 
 const toolLabels: Record<string, string> = {
+  context_builder: "Consultar contexto autorizado",
+  sentinel_handoff: "Abrir achado da sentinela",
+  route_diagnosis: "Consultar diagnóstico",
+  route_commercial_query: "Consultar métricas comerciais",
+  route_prioritization: "Comparar oportunidades",
+  route_recommendation: "Orientar próximos passos",
+  route_help: "Explicar o produto",
   get_context: "Consultar evidências",
   search_opportunities: "Buscar oportunidades",
   search_crm: "Consultar CRM",

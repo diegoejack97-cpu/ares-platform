@@ -50,11 +50,17 @@ async function check(response: Response) {
 export async function getChat(
   scope?: string,
   signal?: AbortSignal,
+  finding?: string,
+  before?: string,
 ): Promise<ChatHistory> {
-  const response = await fetch(
-    scope ? `${base}?scope_ref=${encodeURIComponent(scope)}` : base,
-    { headers: await headers(), signal },
-  );
+  const params = new URLSearchParams();
+  if (finding) params.set("finding_ref", finding);
+  else if (scope) params.set("scope_ref", scope);
+  if (before) params.set("before", before);
+  const response = await fetch(`${base}?${params}`, {
+    headers: await headers(),
+    signal,
+  });
   await check(response);
   return response.json();
 }
@@ -63,12 +69,19 @@ export async function sendChat(
   text: string,
   signal: AbortSignal,
   receive: (event: string, data: Record<string, unknown>) => void,
+  finding?: string,
 ) {
   const response = await fetch(base, {
     method: "POST",
     headers: await headers(),
     signal,
-    body: JSON.stringify(scope ? { text, scope_ref: scope } : { text }),
+    body: JSON.stringify(
+      finding
+        ? { text, finding_ref: finding }
+        : scope
+          ? { text, scope_ref: scope }
+          : { text },
+    ),
   });
   await check(response);
   if (!response.body) throw new ChatError(503, "stream_missing");
@@ -113,4 +126,29 @@ export async function sendChat(
     await reader.cancel();
     reader.releaseLock();
   }
+}
+
+export async function openFindingChat(finding: string, signal?: AbortSignal) {
+  const response = await fetch(
+    `${base.replace("/messages", "")}/findings/${encodeURIComponent(finding)}/open`,
+    { method: "POST", headers: await headers(), signal },
+  );
+  await check(response);
+  return response.json();
+}
+export async function saveChatFeedback(
+  message: string,
+  rating: "helpful" | "unhelpful",
+  reason: string,
+) {
+  const response = await fetch(
+    `${base}/${encodeURIComponent(message)}/feedback`,
+    {
+      method: "PUT",
+      headers: await headers(),
+      body: JSON.stringify({ rating, reason }),
+    },
+  );
+  await check(response);
+  return response.json();
 }

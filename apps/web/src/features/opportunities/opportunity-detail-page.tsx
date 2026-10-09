@@ -25,6 +25,8 @@ import {
 import { dateTime, money, signalLabels } from "./format";
 import { ScoreBar } from "./score-bar";
 import { OpportunityGraphPanel } from "@/features/graph/OpportunityGraphPanel";
+import { SpecialistAnalysisPanel } from "./specialist-analysis-panel";
+import { OutcomePanel } from "@/features/agents/outcome-panel";
 
 export function OpportunityDetailPage() {
   const { id = "" } = useParams();
@@ -149,6 +151,8 @@ export function OpportunityDetailPage() {
 
       <section className="detail-grid">
         <div className="detail-column">
+          <SpecialistAnalysisPanel key={id} opportunityId={id} />
+          <OutcomePanel key={`outcome-${id}`} opportunityId={id} />
           <section className="panel detail-section">
             <div className="panel-heading">
               <div>

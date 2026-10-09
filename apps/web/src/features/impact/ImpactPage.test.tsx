@@ -142,3 +142,6 @@ test("denied access shows the server message and hides amounts", async () => {
   expect(screen.queryByText("Valores por moeda")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Exportar CSV" })).toBeDisabled();
 });
+vi.mock("@/features/agents/outcome-panel", () => ({
+  OutcomeMetricsPanel: () => null,
+}));

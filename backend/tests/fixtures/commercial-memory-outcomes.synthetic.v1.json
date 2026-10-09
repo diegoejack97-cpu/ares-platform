@@ -1,0 +1,16 @@
+{
+  "version": "commercial-memory-outcomes.synthetic.v1",
+  "documents": [
+    {"key":"proposal","tenant":"A","text":"Procedimento para revisão de proposta comercial: confirmar prazo e condições antes do contato.","purpose":"chat"},
+    {"key":"renewal","tenant":"A","text":"Playbook de renovação: revisar vigência e aprovação do gestor antes da renovação contratual.","purpose":"chat"},
+    {"key":"proposal-other-company","tenant":"B","text":"Procedimento para revisão de proposta comercial: instruções exclusivas da outra empresa.","purpose":"chat"}
+  ],
+  "questions": [
+    {"question":"Qual procedimento para proposta?","expected":["proposal"]},
+    {"question":"Como revisar renovação contratual?","expected":["renewal"]},
+    {"question":"playbook vigência renovação","expected":["renewal"]},
+    {"question":"revisão proposta prazo condições","expected":["proposal"]},
+    {"question":"estoque geográfico armazém","expected":[]}
+  ],
+  "result_cases": ["complete_chain","missing_outcome_pending","late_outcome","concurrent_interventions","rejection_is_opinion","incremental_without_method_rejected","changed_source_invalidates_episode"]
+}

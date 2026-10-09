@@ -28,7 +28,9 @@ class PolicyEngine:
         self._hash = hashlib.sha256(raw).hexdigest()
         self._policy: dict[str, Any] = json.loads(raw)
 
-    def evaluate(self, action: ActionDraft, capabilities: CRMCapabilities) -> PolicyResult:
+    def evaluate(
+        self, action: ActionDraft, capabilities: CRMCapabilities, *, human_review: bool = False
+    ) -> PolicyResult:
         capability = {
             "create_task": capabilities.create_task,
             "add_note": capabilities.add_note,
@@ -44,12 +46,21 @@ class PolicyEngine:
         if not capability:
             matched.append("provider:capability_missing")
             obligations.append("disable_action_in_ui")
+        policy_hash = self._hash
+        version = int(self._policy["policy_version"])
+        required_role = rule.get("required_role")
+        if human_review and verdict != "deny":
+            verdict = "require_approval"
+            required_role = "manager"
+            obligations.append("phase7_human_decision")
+            version = 2
+            policy_hash = hashlib.sha256((self._hash + ":phase7-human.v1").encode()).hexdigest()
         return PolicyResult(
             policy_set=str(self._policy["policy_set"]),
-            policy_version=int(self._policy["policy_version"]),
-            policy_hash=self._hash,
+            policy_version=version,
+            policy_hash=policy_hash,
             verdict=verdict,
             rules_matched=matched,
             obligations=obligations,
-            required_role=rule.get("required_role"),
+            required_role=required_role,
         )

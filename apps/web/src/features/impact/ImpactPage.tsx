@@ -25,6 +25,7 @@ import {
   when,
 } from "./format";
 import "./impact.css";
+import { OutcomeMetricsPanel } from "@/features/agents/outcome-panel";
 
 function Result({ row }: { row: ImpactIntervention }) {
   if (!row.result_type)
@@ -111,6 +112,7 @@ export function ImpactPage() {
           ))}
         </div>
       </header>
+      <OutcomeMetricsPanel days={days} />
       {download.isPending ? (
         <NoticeBar tone="info">Preparando exportação auditada…</NoticeBar>
       ) : null}
