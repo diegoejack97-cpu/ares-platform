@@ -1,0 +1,55 @@
+.memory-settings {
+  border-top: 1px solid var(--edge);
+  padding-block: 12px;
+}
+.commercial-panel {
+  overflow-wrap: anywhere;
+}
+.memory-settings summary,
+.memory-documents summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.memory-documents {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.memory-documents > li {
+  padding: 12px;
+  border: 1px solid var(--edge);
+  overflow-wrap: anywhere;
+}
+.memory-checkboxes {
+  display: grid;
+  gap: 6px;
+}
+.memory-settings input[type="file"] {
+  width: 100%;
+}
+.outcome-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  font-size: 12px;
+}
+.outcome-facts dt {
+  color: var(--ink-2);
+}
+.outcome-facts dd {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.outcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px;
+}
+@media (max-width: 640px) {
+  .outcome-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

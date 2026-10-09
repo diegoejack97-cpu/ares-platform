@@ -1,0 +1,53 @@
+.specialist-analysis-body {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+.specialist-analysis-body > button {
+  justify-self: start;
+}
+.specialist-analysis-body h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.specialist-analysis-body p {
+  margin: 0 0 8px;
+  line-height: 1.6;
+}
+.specialist-analysis-body dl {
+  margin: 0;
+}
+.specialist-analysis-body dl > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.specialist-analysis-body dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.specialist-analysis-body ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.specialist-analysis-body code {
+  overflow-wrap: anywhere;
+}
+.specialist-hypothesis {
+  border-left: 2px solid var(--border);
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+.specialist-source,
+.specialist-urgency {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .specialist-analysis-body dl > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

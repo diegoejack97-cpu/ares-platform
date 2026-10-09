@@ -1,2 +1,34 @@
 # Graphify generates this local index from the current checkout.
 graphify-out/
+
+# Dependencies and build outputs
+node_modules/
+dist/
+.npm-cache/
+.vite/
+coverage/
+playwright-report/
+.playwright-cli/
+test-results/
+output/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+supabase/.branches/
+supabase/.temp/
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/

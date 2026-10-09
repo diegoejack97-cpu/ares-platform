@@ -1,0 +1,168 @@
+.notification-root {
+  position: relative;
+  flex: 0 0 auto;
+}
+.notification-trigger {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 34px;
+  border: 1px solid var(--edge);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+.notification-trigger:hover,
+.notification-trigger[aria-expanded="true"] {
+  border-color: var(--brasa);
+}
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 1px 3px;
+  border-radius: 9px;
+  background: var(--brasa);
+  color: var(--well);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.notification-panel {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(390px, calc(100vw - 22px));
+  border: 1px solid var(--edge);
+  border-radius: var(--surface-radius);
+  background: var(--panel);
+  box-shadow: var(--e-2);
+  color: var(--ink);
+}
+.notification-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--edge);
+}
+.notification-panel header > div {
+  display: grid;
+  gap: 2px;
+}
+.notification-panel header strong {
+  font-size: 14px;
+}
+.notification-panel header span,
+.notification-panel footer {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.notification-panel header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--edge);
+  background: var(--well);
+  color: var(--ink);
+  cursor: pointer;
+}
+.notification-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(50vh, 440px);
+  overflow-y: auto;
+}
+.notification-panel li + li {
+  border-top: 1px solid var(--edge);
+}
+.notification-panel li a {
+  display: grid;
+  gap: 3px;
+  padding: 10px 15px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.notification-panel li a:hover,
+.notification-panel li a:focus-visible {
+  background: var(--well);
+}
+.notification-rule {
+  color: var(--brasa-ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+.notification-panel li strong {
+  font-size: 12px;
+}
+.notification-panel li small {
+  color: var(--ink-3);
+  font-size: 10px;
+}
+.notification-state {
+  margin: 0;
+  padding: 18px 15px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.notification-panel footer {
+  padding: 10px 15px;
+  border-top: 1px solid var(--edge);
+}
+@media (max-width: 500px) {
+  .notification-panel {
+    right: -100px;
+  }
+}
+
+.notification-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  font-size: 12px;
+}
+.notification-filter select {
+  min-width: 0;
+  flex: 1;
+  background: var(--well);
+  border: 1px solid var(--edge);
+  color: var(--ink);
+  padding: 5px;
+}
+.notification-summary {
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.notification-actions,
+.notification-pagination {
+  display: flex;
+  gap: 8px;
+  padding: 0 15px 10px;
+}
+.notification-actions button,
+.notification-pagination button {
+  border: 1px solid var(--edge);
+  background: var(--well);
+  color: var(--ink);
+  font-size: 11px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.notification-pagination {
+  padding: 0 0 8px;
+  justify-content: space-between;
+}
+.notification-panel button:focus-visible,
+.notification-panel select:focus-visible {
+  outline: 2px solid var(--brasa);
+  outline-offset: 2px;
+}

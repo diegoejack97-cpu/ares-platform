@@ -1,0 +1,835 @@
+import asyncio
+import json
+import re
+import secrets
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Annotated, Any, Literal
+from uuid import UUID, uuid4
+
+import psycopg
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from psycopg.rows import dict_row
+from pydantic import BaseModel, Field
+
+from ares.agents.api import agent_router
+from ares.agents.commercial_api import commercial_router
+from ares.agents.runtime_api import agent_runtime_router
+from ares.auth.models import AuthenticatedUser
+from ares.auth.service import SupabaseAuthService
+from ares.chat.api import chat_router
+from ares.command_center.api import command_center_router
+from ares.config import get_settings
+from ares.connectors.fake_crm import FakeCRMProvider
+from ares.connectors.fake_crm_lab import FakeCRMLabClient
+from ares.connectors.http_fake_crm import CRMProviderRequestError, FakeCRMHTTPProvider
+from ares.connectors.provider import CRMProvider
+from ares.connectors.resolver import TenantCRMProvider, webhook_for
+from ares.decision.authorization import DecisionAuthorizationError
+from ares.decision.models import DecideCommand
+from ares.decision.service import DecisionConflict, DecisionService
+from ares.event_journal.models import AcceptedEvent, IncomingCRMEvent, JournalPage
+from ares.event_journal.service import EventJournal, InMemoryEventJournal, PostgresEventJournal
+from ares.graph.api import graph_router
+from ares.impact.api import impact_router
+from ares.integrations.api import integration_router
+from ares.intelligence.context_api import context_router
+from ares.intelligence.service import IntelligenceService
+from ares.knowledge.api import knowledge_router
+from ares.leads.api import lead_router
+from ares.provider.account import account_router
+from ares.provider.api import install_provider_api
+from ares.provider.billing import billing_status
+from ares.security.body_limit import BodyLimitMiddleware
+from ares.security.rate_limit import RateLimited, RequestLimiter
+from ares.security.traffic_limit import TrafficLimitMiddleware
+from ares.sentinels.models import (
+    NotificationCommand,
+    SentinelArchiveCommand,
+    SentinelCatalog,
+    SentinelRuleCommand,
+    SentinelSchedule,
+    SentinelScheduleCommand,
+)
+from ares.sentinels.service import SentinelScheduleConflict, SentinelService
+from ares.workers.health import worker_ready
+from ares.workers.tick import TickWorker
+
+settings = get_settings()
+journal: EventJournal
+if settings.event_journal_backend == "memory":
+    journal = InMemoryEventJournal()
+    intelligence: IntelligenceService | None = None
+else:
+    journal = PostgresEventJournal(settings.database_url, settings.tenant_id)
+    intelligence = IntelligenceService(settings.database_url, settings.tenant_id)
+fake_crm = FakeCRMProvider(settings.fake_crm_webhook_secret)
+crm_provider: CRMProvider
+if settings.crm_provider == "http_fake":
+    crm_provider = FakeCRMHTTPProvider(
+        settings.fake_crm_base_url,
+        settings.fake_crm_api_key.get_secret_value(),
+        settings.fake_crm_timeout_seconds,
+    )
+else:
+    crm_provider = fake_crm
+auth_service = SupabaseAuthService(
+    settings.supabase_url,
+    settings.supabase_publishable_key,
+    settings.database_url,
+)
+bearer = HTTPBearer(auto_error=False)
+fake_crm_lab = FakeCRMLabClient(
+    settings.fake_crm_base_url,
+    settings.fake_crm_api_key.get_secret_value(),
+    settings.fake_crm_timeout_seconds,
+)
+
+app = FastAPI(
+    title="ARES Platform API",
+    version="0.1.0",
+    docs_url="/docs" if settings.environment == "development" else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if settings.environment == "development" else None,
+)
+request_limiter = RequestLimiter(settings)
+app.add_middleware(BodyLimitMiddleware)
+app.add_middleware(TrafficLimitMiddleware, requests_per_minute=settings.rate_limit_ip_per_minute)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_origins),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "X-ARES-Tick-Secret",
+        "X-FakeCRM-Signature",
+        "X-Correlation-Id",
+    ],
+    expose_headers=["Retry-After", "X-Correlation-Id"],
+)
+
+
+@app.exception_handler(RateLimited)
+async def rate_limit_error(request: Request, error: RateLimited) -> JSONResponse:
+    correlation = str(uuid4())
+    return JSONResponse(
+        status_code=429,
+        headers={
+            "Retry-After": str(error.retry_after),
+            "Cache-Control": "no-store",
+            "X-Correlation-Id": correlation,
+        },
+        content={
+            "detail": {
+                "code": "request_rate_limited",
+                "message": "Muitas solicitações. Aguarde e tente novamente.",
+                "correlation_id": correlation,
+            }
+        },
+    )
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+
+
+class SimulateEventRequest(BaseModel):
+    event_type: str = "deal.updated"
+    aggregate_type: Literal["lead", "contact", "company", "deal", "activity", "task"] = "deal"
+    aggregate_id: str | None = None
+    data: dict[str, Any] | None = None
+
+
+class TickResponse(BaseModel):
+    acquired: bool
+    claimed: int
+    succeeded: int
+    failed: int
+    sentinel_findings: int = 0
+
+
+class LabTaskRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+
+
+class LabNoteRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class LabStageRequest(BaseModel):
+    stage: str = Field(min_length=1, max_length=80)
+    expected_version: int = Field(ge=1)
+
+
+async def require_user(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+) -> AuthenticatedUser:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication_required"
+        )
+    user = await auth_service.authenticate(credentials.credentials)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_session")
+    try:
+        await asyncio.to_thread(
+            request_limiter.enforce, user.user_id, user.tenant_id, request.url.path, request.method
+        )
+    except psycopg.Error:
+        raise HTTPException(503, detail="request_limiter_unavailable") from None
+    if not request.url.path.startswith("/api/v1/account/"):
+        allowed = await asyncio.to_thread(auth_service.has_connect_access, user.tenant_id)
+        if not allowed:
+            raise HTTPException(status_code=403, detail="ares_connect_plan_inactive")
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        billing = await asyncio.to_thread(billing_status, settings.database_url, user.tenant_id)
+        if billing["degraded"]:
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "billing_unconfigured"
+                    if billing["state"] == "unconfigured"
+                    else "billing_degraded",
+                    "message": "Cobrança não liberada. Leitura e histórico continuam disponíveis.",
+                    "correlation_id": str(uuid4()),
+                },
+            )
+    return user
+
+
+CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
+
+app.include_router(integration_router(settings, require_user))
+app.include_router(agent_router(settings, require_user))
+app.include_router(agent_runtime_router(settings, require_user))
+app.include_router(commercial_router(settings, require_user))
+app.include_router(context_router(settings, require_user))
+app.include_router(knowledge_router(settings, require_user))
+app.include_router(graph_router(settings, require_user))
+app.include_router(chat_router(settings, require_user))
+app.include_router(impact_router(settings, require_user))
+app.include_router(command_center_router(settings, require_user))
+app.include_router(lead_router(settings, require_user))
+install_provider_api(app, settings, request_limiter)
+app.include_router(account_router(settings, require_user))
+
+
+@app.get("/api/v1/account/billing")
+async def account_billing(user: CurrentUser) -> Any:
+    return await asyncio.to_thread(billing_status, settings.database_url, user.tenant_id)
+
+
+def require_development() -> None:
+    if settings.environment != "development":
+        raise HTTPException(status_code=404, detail="not_found")
+
+
+def get_fake_crm_lab() -> FakeCRMLabClient:
+    return fake_crm_lab
+
+
+DevelopmentOnly = Annotated[None, Depends(require_development)]
+FakeCRMLab = Annotated[FakeCRMLabClient, Depends(get_fake_crm_lab)]
+
+
+def require_lab_admin(user: CurrentUser) -> AuthenticatedUser:
+    if user.role != "admin" or user.tenant_id != settings.tenant_id:
+        raise HTTPException(status_code=403, detail="admin_required")
+    return user
+
+
+LabAdmin = Annotated[AuthenticatedUser, Depends(require_lab_admin)]
+
+
+def decisions_for(user: AuthenticatedUser) -> DecisionService:
+    return DecisionService(
+        settings.database_url,
+        user.tenant_id,
+        crm_provider
+        if settings.event_journal_backend == "memory"
+        else TenantCRMProvider(settings, user.tenant_id),
+        openai_api_key=settings.openai_api_key.get_secret_value(),
+        openai_model=settings.openai_model,
+        estimated_cost_usd=Decimal(str(settings.recommendation_estimated_cost_usd)),
+    )
+
+
+@app.get("/health/live", response_model=HealthResponse)
+async def health_live() -> HealthResponse:
+    return HealthResponse(status="ok", service="ares-api")
+
+
+@app.get("/health/ready", response_model=HealthResponse)
+async def health_ready() -> HealthResponse:
+    if not await journal.is_ready():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="event_journal_unavailable",
+        )
+    if settings.require_worker and not await asyncio.to_thread(worker_ready, settings):
+        raise HTTPException(503, detail="worker_unavailable")
+    return HealthResponse(status="ready", service="ares-api")
+
+
+@app.post(
+    "/api/v1/webhooks/fake-crm/{connection_id}",
+    response_model=AcceptedEvent,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def receive_fake_crm_webhook(
+    connection_id: UUID,
+    request: Request,
+    x_fakecrm_signature: str | None = Header(default=None),
+) -> AcceptedEvent:
+    if not x_fakecrm_signature or not re.fullmatch(r"sha256=[0-9a-fA-F]{64}", x_fakecrm_signature):
+        raise HTTPException(401, detail="invalid_webhook_signature")
+    if settings.event_journal_backend == "memory":
+        raw_body = await request.body()
+        incoming = fake_crm.verify_and_normalize(raw_body, x_fakecrm_signature)
+        return await journal.record(incoming)
+    try:
+        tenant, secret = await asyncio.to_thread(webhook_for, settings, connection_id)
+    except CRMProviderRequestError as error:
+        raise HTTPException(error.status_code or 503, detail=error.code) from error
+    raw_body = await request.body()
+    incoming = FakeCRMProvider(secret).verify_and_normalize(raw_body, x_fakecrm_signature)
+    return await PostgresEventJournal(settings.database_url, tenant).record(incoming)
+
+
+@app.get("/api/v1/journal/events", response_model=JournalPage)
+async def list_journal_events(
+    _user: CurrentUser,
+    limit: int = Query(50, ge=1, le=100),
+    cursor: str | None = Query(None, max_length=512),
+) -> JournalPage:
+    scoped = (
+        journal
+        if settings.event_journal_backend == "memory"
+        else PostgresEventJournal(settings.database_url, _user.tenant_id, reader=_user)
+    )
+    try:
+        return await scoped.list_events(limit=limit, cursor=cursor)
+    except ValueError:
+        raise HTTPException(400, detail="invalid_cursor") from None
+
+
+@app.post(
+    "/api/v1/dev/fake-crm/events",
+    response_model=AcceptedEvent,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def simulate_fake_crm_event(
+    payload: SimulateEventRequest, _user: CurrentUser
+) -> AcceptedEvent:
+    require_development()
+    require_lab_admin(_user)
+    aggregate_id = payload.aggregate_id or f"deal-{uuid4().hex[:8]}"
+    now = datetime.now(UTC)
+    fixture: dict[str, Any] = {
+        "title": "Expansão Serra Metais — Unidade Sul",
+        "stage": "proposal",
+        "previous_stage": "negotiation",
+        "status": "open",
+        "risk": "follow_up_overdue",
+        "next_follow_up_at": (now - timedelta(days=2)).isoformat(),
+        "days_in_stage": 12,
+        "next_step": None,
+        "owner_id": None,
+        "value": 125000,
+        "currency": "BRL",
+        "days_since_contact": 14,
+        "expected_close_at": (now + timedelta(days=3)).isoformat(),
+        "fixture": True,
+    }
+    fixture.update(payload.data or {})
+    incoming = IncomingCRMEvent(
+        provider_event_id=f"fake-{uuid4()}",
+        event_type=payload.event_type,
+        aggregate_type=payload.aggregate_type,
+        aggregate_id=aggregate_id,
+        occurred_at=now,
+        data=fixture,
+    )
+    raw_body = json.dumps(incoming.model_dump(mode="json"), separators=(",", ":")).encode()
+    normalized = fake_crm.verify_and_normalize(raw_body, fake_crm.sign(raw_body))
+    accepted = await journal.record(normalized)
+    if intelligence is not None:
+        await intelligence.process_event(accepted.event_id)
+    return accepted
+
+
+@app.get("/api/v1/dev/fake-crm/lab")
+async def get_fake_crm_lab_snapshot(
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> dict[str, Any]:
+    try:
+        return await client.snapshot()
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": error.code, "upstream_status": error.status_code},
+        ) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/reset")
+async def reset_fake_crm_lab(
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> dict[str, Any]:
+    try:
+        return await client.reset()
+    except CRMProviderRequestError as error:
+        raise HTTPException(status_code=502, detail={"code": error.code}) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/deals/{deal_id}/tasks")
+async def create_fake_crm_lab_task(
+    deal_id: str,
+    payload: LabTaskRequest,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    try:
+        return await client.create_task(deal_id, payload.title, idempotency_key)
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/deals/{deal_id}/notes")
+async def add_fake_crm_lab_note(
+    deal_id: str,
+    payload: LabNoteRequest,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    try:
+        return await client.add_note(deal_id, payload.body, idempotency_key)
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+
+
+@app.patch("/api/v1/dev/fake-crm/lab/deals/{deal_id}/stage")
+async def update_fake_crm_lab_stage(
+    deal_id: str,
+    payload: LabStageRequest,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    try:
+        return await client.update_stage(
+            deal_id,
+            payload.stage,
+            payload.expected_version,
+            idempotency_key,
+        )
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+
+
+@app.post("/api/v1/dev/fake-crm/lab/deals/{deal_id}/events", response_model=AcceptedEvent)
+async def send_fake_crm_lab_event(
+    deal_id: str,
+    user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> AcceptedEvent:
+    try:
+        deal = await client.get_deal(deal_id)
+    except CRMProviderRequestError as error:
+        raise HTTPException(
+            status_code=error.status_code or 502,
+            detail={"code": error.code},
+        ) from error
+    return await simulate_fake_crm_event(
+        SimulateEventRequest(aggregate_id=deal_id, data=deal),
+        user,
+    )
+
+
+@app.post("/api/v1/dev/fake-crm/lab/faults/{scenario}")
+async def test_fake_crm_lab_fault(
+    scenario: str,
+    _user: LabAdmin,
+    _development: DevelopmentOnly,
+    client: FakeCRMLab,
+) -> dict[str, Any]:
+    allowed = {"unauthorized", "not_found", "conflict", "rate_limit", "server_error", "timeout"}
+    if scenario not in allowed:
+        raise HTTPException(status_code=422, detail={"code": "unknown_scenario"})
+    return await client.simulate_fault(scenario)
+
+
+@app.get("/api/v1/opportunities/analytics")
+async def opportunity_analytics(user: CurrentUser) -> dict[str, Any]:
+    """Aggregates over every opportunity, so charts and agents share one population."""
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
+    return await service.opportunity_analytics()
+
+
+@app.get("/api/v1/sentinels")
+async def list_sentinels(
+    user: CurrentUser,
+    limit: int = Query(default=25, ge=1, le=50),
+) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        SentinelService(settings.database_url).list_sync, user.tenant_id, limit=limit, reader=user
+    )
+
+
+@app.get("/api/v1/sentinels/notifications")
+async def sentinel_notifications(
+    user: CurrentUser,
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=100000),
+    view: Literal["all", "unread", "archived"] = "all",
+) -> dict[str, Any]:
+    from ares.sentinels.notifications import NotificationService
+
+    try:
+        return await asyncio.to_thread(
+            NotificationService(settings.database_url).list_sync, user, limit, offset, view
+        )
+    except SentinelScheduleConflict as error:
+        raise HTTPException(403, detail={"code": error.code}) from None
+
+
+@app.put("/api/v1/sentinels/notifications/{finding_id}")
+async def sentinel_notification_state(
+    finding_id: UUID, command: NotificationCommand, user: CurrentUser
+) -> dict[str, Any]:
+    from ares.sentinels.notifications import NotificationService
+
+    try:
+        return await asyncio.to_thread(
+            NotificationService(settings.database_url).mark_sync,
+            user,
+            finding_id,
+            command.expected_revision,
+            command.action,
+        )
+    except SentinelScheduleConflict as error:
+        status = (
+            403
+            if error.code == "sentinel_access_denied"
+            else 404
+            if error.code == "sentinel_finding_not_found"
+            else 409
+        )
+        raise HTTPException(status, detail={"code": error.code}) from None
+
+
+@app.get("/api/v1/sentinels/rules/options")
+def sentinel_rule_options(user: CurrentUser) -> dict[str, Any]:
+    from ares.sentinels.notifications import scope_on
+
+    try:
+        with psycopg.connect(settings.database_url, row_factory=dict_row) as db:
+            scope_on(db, user, admin=True)
+            members = db.execute(
+                "select m.user_id,u.email,m.role::text role from public.memberships m "
+                "join auth.users u on u.id=m.user_id where m.tenant_id=%s and m.active "
+                "order by u.email nulls last,m.user_id limit 1000",
+                (user.tenant_id,),
+            ).fetchall()
+            quota = db.execute(
+                "select agent_slots from public.tenant_quotas where tenant_id=%s", (user.tenant_id,)
+            ).fetchone()
+            return {
+                "members": [dict(member) for member in members],
+                "agent_slots": quota["agent_slots"] if quota else 0,
+                "truncated": len(members) == 1000,
+            }
+    except SentinelScheduleConflict as error:
+        raise HTTPException(403, detail={"code": error.code}) from None
+
+
+@app.post("/api/v1/sentinels/rules/preview")
+async def preview_sentinel_rule(command: SentinelRuleCommand, user: CurrentUser) -> dict[str, Any]:
+    from ares.decision.execution_guard import ExecutionBlocked
+
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).preview_sync, user, command
+        )
+    except ExecutionBlocked as error:
+        raise HTTPException(403, detail={"code": error.code}) from None
+    except SentinelScheduleConflict as error:
+        raise HTTPException(
+            403 if error.code == "sentinel_access_denied" else 409, detail={"code": error.code}
+        ) from None
+
+
+@app.get("/api/v1/sentinels/config", response_model=SentinelSchedule)
+async def sentinel_schedule(user: CurrentUser) -> Any:
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).schedule_sync, user.tenant_id
+        )
+    except SentinelScheduleConflict as error:
+        raise HTTPException(404, detail={"code": error.code}) from None
+
+
+@app.get("/api/v1/sentinels/rules", response_model=SentinelCatalog)
+async def list_sentinel_rules(user: CurrentUser) -> Any:
+    return await asyncio.to_thread(
+        SentinelService(settings.database_url).catalog_sync, user.tenant_id
+    )
+
+
+@app.post("/api/v1/sentinels/rules", response_model=SentinelSchedule, status_code=201)
+async def create_sentinel_rule(command: SentinelRuleCommand, user: CurrentUser) -> Any:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).save_rule_sync,
+            user.tenant_id,
+            user.user_id,
+            command,
+        )
+    except SentinelScheduleConflict as error:
+        raise HTTPException(409, detail={"code": error.code}) from None
+
+
+@app.put("/api/v1/sentinels/rules/{rule_id}", response_model=SentinelSchedule)
+async def update_sentinel_rule(
+    rule_id: str, command: SentinelRuleCommand, user: CurrentUser
+) -> Any:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).save_rule_sync,
+            user.tenant_id,
+            user.user_id,
+            command,
+            rule_id,
+        )
+    except SentinelScheduleConflict as error:
+        status_code = 404 if error.code == "sentinel_schedule_not_found" else 409
+        raise HTTPException(status_code, detail={"code": error.code}) from None
+
+
+@app.post("/api/v1/sentinels/rules/{rule_id}/archive", status_code=204)
+async def archive_sentinel_rule(
+    rule_id: str, command: SentinelArchiveCommand, user: CurrentUser
+) -> None:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        await asyncio.to_thread(
+            SentinelService(settings.database_url).archive_rule_sync,
+            user.tenant_id,
+            user.user_id,
+            rule_id,
+            command.expected_version,
+            command.reason,
+        )
+    except SentinelScheduleConflict as error:
+        status_code = 404 if error.code == "sentinel_schedule_not_found" else 409
+        raise HTTPException(status_code, detail={"code": error.code}) from None
+
+
+@app.put("/api/v1/sentinels/config", response_model=SentinelSchedule)
+async def update_sentinel_schedule(command: SentinelScheduleCommand, user: CurrentUser) -> Any:
+    if user.role != "admin":
+        raise HTTPException(403, detail={"code": "tenant_admin_required"})
+    try:
+        return await asyncio.to_thread(
+            SentinelService(settings.database_url).update_schedule_sync,
+            user.tenant_id,
+            user.user_id,
+            command,
+        )
+    except SentinelScheduleConflict as error:
+        status_code = 404 if error.code == "sentinel_schedule_not_found" else 409
+        raise HTTPException(status_code, detail={"code": error.code}) from None
+
+
+@app.get("/api/v1/opportunities")
+async def list_opportunities(
+    user: CurrentUser,
+    state_filter: str | None = Query(default=None, alias="state"),
+    owner: UUID | None = None,
+    min_score: float | None = Query(default=None, ge=0, le=1),
+    sla_before: datetime | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=25, ge=1, le=100),
+) -> dict[str, Any]:
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
+    try:
+        return await service.list_opportunities(
+            state=state_filter,
+            owner=owner,
+            min_score=min_score,
+            sla_before=sla_before,
+            cursor=cursor,
+            limit=limit,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/api/v1/opportunities/{opportunity_id}")
+async def get_opportunity(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
+    result = await service.get_opportunity(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="opportunity_not_found")
+    decisions = decisions_for(user)
+    recommendation = await decisions.get_latest_for_opportunity(opportunity_id, str(user.user_id))
+    result["can_request_recommendation"] = await decisions.can_request_recommendation(
+        opportunity_id, str(user.user_id)
+    )
+    result["recommendation"] = recommendation
+    result["recommendation_status"] = (
+        recommendation["status"] if recommendation else "not_generated"
+    )
+    return result
+
+
+@app.post(
+    "/api/v1/opportunities/{opportunity_id}/recommendations",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_recommendation(
+    opportunity_id: UUID,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    if user.role == "auditor":
+        raise HTTPException(403, detail={"code": "decision_actor_forbidden"})
+    if user.tenant_id != settings.tenant_id and user.tenant_id not in settings.crm_connections:
+        raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
+    try:
+        result = await decisions_for(user).create_recommendation(opportunity_id, str(user.user_id))
+        if result.get("intent_id") and settings.background_execution:
+            worker = TickWorker(
+                settings.database_url,
+                settings.supabase_url,
+                settings.supabase_secret_key.get_secret_value(),
+                provider=crm_provider if settings.event_journal_backend == "memory" else None,
+            )
+            background_tasks.add_task(worker.run_once)
+        return result
+    except DecisionAuthorizationError as error:
+        raise HTTPException(403, detail={"code": error.code}) from error
+    except DecisionConflict as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": error.code, "current_version": error.current_version},
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/v1/recommendations/{recommendation_id}")
+async def get_recommendation(recommendation_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    result = await decisions_for(user).get_recommendation(recommendation_id, str(user.user_id))
+    if result is None:
+        raise HTTPException(status_code=404, detail="recommendation_not_found")
+    return result
+
+
+@app.post("/api/v1/recommendations/{recommendation_id}/decide")
+async def decide_recommendation(
+    recommendation_id: UUID,
+    command: DecideCommand,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    if user.role == "auditor":
+        raise HTTPException(403, detail={"code": "decision_actor_forbidden"})
+    if user.tenant_id != settings.tenant_id and user.tenant_id not in settings.crm_connections:
+        raise HTTPException(503, detail={"code": "tenant_crm_adapter_not_configured"})
+    try:
+        result = await decisions_for(user).decide(recommendation_id, command, str(user.user_id))
+        if result.get("intent_id") and settings.background_execution:
+            worker = TickWorker(
+                settings.database_url,
+                settings.supabase_url,
+                settings.supabase_secret_key.get_secret_value(),
+                provider=crm_provider if settings.event_journal_backend == "memory" else None,
+            )
+            background_tasks.add_task(worker.run_once)
+        return result
+    except DecisionAuthorizationError as error:
+        raise HTTPException(403, detail={"code": error.code}) from error
+    except DecisionConflict as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": error.code, "current_version": error.current_version},
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/v1/approvals")
+async def list_approvals(user: CurrentUser) -> dict[str, Any]:
+    return await decisions_for(user).list_approvals(str(user.user_id))
+
+
+@app.get("/api/v1/actions/{intent_id}")
+async def get_action(intent_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    result = await decisions_for(user).get_action(intent_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="action_intent_not_found")
+    return result
+
+
+@app.get("/api/v1/opportunities/{opportunity_id}/context")
+async def get_opportunity_context(opportunity_id: UUID, user: CurrentUser) -> dict[str, Any]:
+    service = IntelligenceService(settings.database_url, user.tenant_id, reader=user)
+    result = await service.get_context(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="opportunity_context_not_found")
+    return result
+
+
+@app.post("/api/v1/internal/tick", response_model=TickResponse)
+async def run_tick(x_ares_tick_secret: str | None = Header(default=None)) -> TickResponse:
+    expected = settings.tick_secret.get_secret_value()
+    if x_ares_tick_secret is None or not secrets.compare_digest(x_ares_tick_secret, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_tick_secret")
+    worker = TickWorker(
+        settings.database_url,
+        settings.supabase_url,
+        settings.supabase_secret_key.get_secret_value(),
+        provider=crm_provider if settings.event_journal_backend == "memory" else None,
+    )
+    result = await asyncio.to_thread(worker.run_once)
+    return TickResponse(
+        acquired=result.acquired,
+        claimed=result.claimed,
+        succeeded=result.succeeded,
+        failed=result.failed,
+        sentinel_findings=result.sentinel_findings,
+    )

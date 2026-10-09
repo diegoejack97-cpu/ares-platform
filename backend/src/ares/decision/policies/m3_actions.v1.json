@@ -1,0 +1,19 @@
+{
+  "policy_set": "ares-connect-actions",
+  "policy_version": 1,
+  "rules": {
+    "create_task": {
+      "verdict": "require_approval",
+      "required_role": "manager",
+      "obligations": ["human_decision", "opaque_target", "idempotent_execution"]
+    },
+    "add_note": {
+      "verdict": "allow",
+      "obligations": ["opaque_target", "idempotent_execution"]
+    },
+    "update_stage": {
+      "verdict": "deny",
+      "obligations": ["manual_crm_change"]
+    }
+  }
+}

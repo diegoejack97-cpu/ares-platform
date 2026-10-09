@@ -45,6 +45,48 @@ Present the plan for confirmation when it changes established identity or involv
 
 Read [references/visual-guardrails.md](references/visual-guardrails.md) for the anti-cliché audit before completing a major screen.
 
+## System-wide visual identity
+
+ARES must be treated as one coherent product, not as a collection of independently designed screens.
+
+Visual improvements must consider the complete product experience:
+
+- application shell;
+- navigation;
+- headers;
+- dashboards;
+- CRM views;
+- opportunity views;
+- tables;
+- kanban;
+- forms;
+- filters;
+- charts;
+- drawers;
+- modals;
+- alerts;
+- AI surfaces;
+- command interfaces;
+- empty states;
+- loading states;
+- errors;
+- onboarding;
+- reports;
+- configuration screens.
+
+Do not redesign individual pages in isolation when the underlying visual
+problem belongs to the system.
+
+When a recurring visual problem is identified, solve it at the token,
+primitive, component, or layout-system level first.
+
+The same hierarchy, spacing, typography, interaction logic, chart language,
+density, surfaces, and semantic meaning must propagate consistently
+throughout ARES.
+
+A mature ARES screen must feel related to every other ARES screen even when
+their business functions are different.
+
 ## Accessibility
 
 - Meet WCAG AA contrast for text and interactive controls.

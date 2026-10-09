@@ -1,0 +1,525 @@
+.command-center-page {
+  min-width: 0;
+}
+.cc-scope {
+  margin-top: 6px;
+  font-family: var(--font-data);
+  font-size: var(--type-label);
+  color: var(--ink-3);
+}
+.command-center-page > .console-stack > .meta-row {
+  padding: 0 4px;
+}
+.cc-view-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.cc-view-button {
+  min-width: 0;
+  min-height: 70px;
+  padding: 12px 16px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  text-align: left;
+  background: var(--panel);
+  color: var(--ink-2);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--edge);
+  border-radius: var(--surface-radius);
+  box-shadow: var(--e-1);
+  cursor: pointer;
+}
+.cc-view-button strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.cc-view-button span {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.cc-view-button[aria-pressed="true"] {
+  border-left-color: var(--brasa);
+  background: var(--raised);
+  box-shadow: var(--e-2);
+}
+.cc-view-button:focus-visible,
+.cc-secondary-details summary:focus-visible,
+.cc-work-details summary:focus-visible {
+  outline: 2px solid var(--brasa);
+  outline-offset: 2px;
+}
+
+/* The first view reads from four facts to the queue, then to supporting detail. */
+.cc-now-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+.cc-now-strip {
+  display: grid;
+  gap: 12px;
+}
+.cc-primary-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.cc-primary-stats .cc-stat {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 128px;
+  padding: 16px 18px;
+  background: var(--well);
+  border: 1px solid var(--edge);
+  border-radius: var(--control-radius);
+  box-shadow: var(--e-well);
+}
+.cc-primary-stats .cc-stat dd {
+  justify-content: flex-start;
+  text-align: left;
+  font-size: clamp(26px, 2.2vw, 34px);
+  line-height: 1.15;
+  font-weight: 650;
+}
+.cc-primary-stats .cc-stat-value dd {
+  font-size: clamp(17px, 1.6vw, 24px);
+}
+.cc-secondary-details,
+.cc-work-details {
+  min-width: 0;
+  border: 1px solid var(--edge);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+}
+.cc-secondary-details summary,
+.cc-work-details summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.cc-secondary-details[open] summary,
+.cc-work-details[open] summary {
+  border-bottom: 1px solid var(--edge);
+}
+.cc-secondary-details > dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 12px;
+  gap: 10px;
+}
+.cc-secondary-details .cc-stat {
+  padding: 12px;
+  background: var(--well);
+  border: 1px solid var(--edge);
+  border-radius: var(--control-radius);
+}
+.cc-secondary-details .meta-row {
+  margin: 0 12px 12px;
+}
+.cc-stat dt {
+  margin: 0;
+  color: var(--ink-2);
+}
+.cc-stat dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 6px 8px;
+  text-align: right;
+  font-size: 18px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.cc-secondary-details .cc-stat dd {
+  font-size: 18px;
+}
+.cc-stat dd small {
+  flex-basis: 100%;
+  font-size: var(--type-label);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+.cc-stat dd strong {
+  font-weight: 620;
+}
+.cc-stat dd .cell-muted {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.cc-now-main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.cc-queue-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cc-queue-head h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  color: var(--ink);
+}
+.cc-queue-head p,
+.cc-queue-head > span {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.cc-queue-more {
+  justify-self: start;
+}
+.cc-work-details summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.cc-work-details summary span {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.cc-work-details .cc-now-lists {
+  padding: 0 16px 16px;
+}
+.cc-now-main > .data-table {
+  margin: 0;
+}
+.cc-now-main > .data-empty {
+  padding: 24px 0;
+  text-align: left;
+}
+.cc-now-main .data-empty a,
+.cc-list a {
+  color: var(--brasa-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cc-now-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 28px;
+  border-top: 1px solid var(--edge);
+}
+.cc-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px 0 0;
+  min-width: 0;
+}
+.cc-list + .cc-list {
+  border-inline-start: 1px solid var(--edge);
+  padding-inline-start: 28px;
+}
+.cc-list h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.cc-list-note {
+  color: var(--ink-3);
+  font-size: var(--type-label);
+  line-height: 1.5;
+}
+.cc-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.cc-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--edge);
+  font-size: 13px;
+}
+.cc-list li:first-child {
+  border-top: 0;
+}
+.cc-list li > a:first-child {
+  font-weight: 600;
+  color: var(--ink);
+}
+.cc-list li time {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* Impacto */
+.cc-impact .metric-strip {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cc-impact .metric-strip > li:nth-child(4n + 1) {
+  border-inline-start: 0;
+}
+.cc-impact .metric-strip > li:nth-child(n + 5) {
+  border-top: 1px solid var(--edge);
+}
+.cc-impact-foot {
+  gap: 10px;
+}
+.metric-coverage {
+  margin: 0;
+  font-size: var(--type-label);
+  color: var(--ink-3);
+}
+
+/* Analytical surface: one cut plane, four frames, dividers not cards. */
+.cc-analysis-grid {
+  display: grid;
+  grid-template-columns: 1.18fr 1fr 1fr;
+  gap: 0;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--surface-radius);
+  box-shadow: var(--e-1);
+  min-width: 0;
+}
+.cc-analysis-grid > .chart-frame {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 0;
+}
+.cc-analysis-grid > .chart-trend {
+  grid-column: 1 / span 2;
+  border-right: 1px solid var(--edge);
+}
+.cc-analysis-grid > .chart-funnel {
+  grid-column: 3;
+}
+.cc-analysis-grid > .chart-signals {
+  grid-column: 1 / span 2;
+  border-top: 1px solid var(--edge);
+  border-right: 1px solid var(--edge);
+}
+.cc-analysis-grid > .chart-heat {
+  grid-column: 3;
+  border-top: 1px solid var(--edge);
+}
+.cc-analysis-grid.intelligence-loading {
+  min-height: 320px;
+  padding: 20px;
+  gap: 16px;
+}
+.cc-analysis-grid.intelligence-loading i {
+  display: block;
+  min-height: 120px;
+  background: var(--well);
+  box-shadow: var(--e-well);
+  border-radius: var(--control-radius);
+}
+.cc-analysis-grid .chart-data-table td,
+.cc-analysis-grid .chart-data-table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Timeline entrance only when motion is welcome. */
+.cc-activity-more {
+  padding: 10px 20px 16px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cc-activity .event-trail-item {
+    animation: cc-arrive var(--dur-2) var(--ease) both;
+  }
+}
+@keyframes cc-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Definitions */
+.cc-definitions h3 {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+.cc-definitions li:focus-visible {
+  outline: 2px solid var(--brasa);
+  outline-offset: 2px;
+}
+.cc-definitions li[id] {
+  scroll-margin-top: 80px;
+}
+
+@media (max-width: 1100px) {
+  .cc-primary-stats,
+  .cc-secondary-details > dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cc-analysis-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cc-analysis-grid > .chart-trend,
+  .cc-analysis-grid > .chart-signals {
+    grid-column: 1 / span 2;
+    border-right: 0;
+  }
+  .cc-analysis-grid > .chart-funnel,
+  .cc-analysis-grid > .chart-heat {
+    grid-column: auto;
+    border-top: 1px solid var(--edge);
+  }
+  .cc-analysis-grid > .chart-funnel {
+    border-right: 1px solid var(--edge);
+  }
+}
+@media (max-width: 900px) {
+  .cc-impact .metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cc-impact .metric-strip > li:nth-child(4n + 1) {
+    border-inline-start: 1px solid var(--edge);
+  }
+  .cc-impact .metric-strip > li:nth-child(2n + 1) {
+    border-inline-start: 0;
+  }
+  .cc-impact .metric-strip > li:nth-child(n + 3) {
+    border-top: 1px solid var(--edge);
+  }
+  .cc-now-lists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cc-list + .cc-list {
+    border-inline-start: 0;
+    padding-inline-start: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .cc-analysis-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cc-analysis-grid > .chart-frame {
+    grid-column: auto !important;
+    border-right: 0 !important;
+  }
+  .cc-analysis-grid > .chart-frame + .chart-frame {
+    border-top: 1px solid var(--edge);
+  }
+}
+@media (max-width: 600px) {
+  .cc-view-nav {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .cc-view-button {
+    min-height: 52px;
+    padding: 8px 12px;
+  }
+  .cc-view-button span {
+    display: none;
+  }
+  .cc-primary-stats .cc-stat {
+    min-height: 106px;
+    padding: 12px;
+  }
+  .cc-primary-stats .cc-stat dd {
+    font-size: 24px;
+    overflow-wrap: anywhere;
+  }
+  .cc-primary-stats .cc-stat-value dd {
+    font-size: 16px;
+  }
+  .cc-secondary-details > dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cc-queue-head {
+    align-items: start;
+    flex-direction: column;
+  }
+  .cc-now-main .data-table {
+    overflow: visible;
+    background: none;
+    box-shadow: none;
+  }
+  .cc-now-main .data-table table,
+  .cc-now-main .data-table tbody,
+  .cc-now-main .data-table tr {
+    display: block;
+    width: 100%;
+  }
+  .cc-now-main .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .cc-now-main .data-table caption {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .cc-now-main .data-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 1px solid var(--edge);
+    border-radius: var(--control-radius);
+    background: var(--well);
+  }
+  .cc-now-main .data-table td,
+  .cc-now-main .data-table td.is-numeric {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .cc-now-main .data-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .cc-now-main .data-table td:nth-child(2),
+  .cc-now-main .data-table td:last-child {
+    grid-column: 1 / -1;
+  }
+  .cc-now-main .data-table .cell-actions {
+    justify-content: start;
+  }
+}
