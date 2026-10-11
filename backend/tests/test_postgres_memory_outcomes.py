@@ -554,9 +554,17 @@ def test_auditor_downgrade_prevents_queued_outcome_execution(case):
     service = OutcomeService(base.URL)
     id = intervention(case, True)
     result = service.start(user, id)
-    query(fixture, "update public.memberships set role='auditor' where tenant_id=%s and user_id=%s", (user.tenant_id, user.user_id))
+    query(
+        fixture,
+        "update public.memberships set role='auditor' where tenant_id=%s and user_id=%s",
+        (user.tenant_id, user.user_id),
+    )
     service.process(user.tenant_id, {"evaluation_id": str(result["id"])})
-    row = query(fixture, "select status,run_id,error_code from public.outcome_evaluations where tenant_id=%s and id=%s", (user.tenant_id, result["id"]))[0]
+    row = query(
+        fixture,
+        "select status,run_id,error_code from public.outcome_evaluations where tenant_id=%s and id=%s",
+        (user.tenant_id, result["id"]),
+    )[0]
     assert row["status"] == "failed" and row["run_id"] is None
     assert row["error_code"] == "outcome_write_forbidden"
 
@@ -566,19 +574,39 @@ def test_complete_outcome_chain_preserves_links_and_financial_values(case):
     service = OutcomeService(base.URL)
     id = intervention(case, True)
     recommendation, policy, decision, execution, correlation = [uuid4() for _ in range(5)]
-    query(fixture, "insert into public.recommendations(id,tenant_id,intervention_id,opportunity_id,correlation_id,kind,recommended_action,rationale,confidence,status) values(%s,%s,%s,%s,%s,'create_task','{}','Synthetic rationale',0.8,'approved')", (recommendation,user.tenant_id,id,opp,correlation))
-    query(fixture, "insert into public.policy_decisions(id,tenant_id,policy_set,policy_version,inputs_hash,verdict) values(%s,%s,'synthetic',1,'synthetic','allow')", (policy,user.tenant_id))
-    query(fixture, "insert into public.decisions(id,tenant_id,intervention_id,recommendation_id,policy_decision_id,correlation_id,actor_type,actor_id,verdict,source) values(%s,%s,%s,%s,%s,%s,'human',%s,'approved','human')", (decision,user.tenant_id,id,recommendation,policy,correlation,str(user.user_id)))
-    query(fixture, "insert into public.action_executions(id,tenant_id,intervention_id,correlation_id,executed_action,target,actor_type,actor_id,source,status,idempotency_key,started_at,finished_at,result) values(%s,%s,%s,%s,'{}','{}','ares_agent','synthetic-worker','ares','succeeded',%s,now(),now(),'{\"confirmed\":true,\"version\":3,\"email\":\"private@example.invalid\"}')", (execution,user.tenant_id,id,correlation,str(uuid4())))
-    query(fixture, "update public.outcomes set action_execution_id=%s,sale_value=100,ares_influenced_value=50,currency='BRL',attribution_level='influenced' where tenant_id=%s and intervention_id=%s", (execution,user.tenant_id,id))
-    chain=service.latest(user,id)['chain']
-    assert chain['recommendations'][0]['id'] == str(recommendation)
-    assert chain['decisions'][0]['recommendation_id'] == str(recommendation)
-    assert chain['executions'][0]['id'] == str(execution)
-    assert chain['executions'][0]['provider_confirmation'] == {'confirmed':True,'version':3}
-    assert chain['outcome']['action_execution_id'] == str(execution)
-    assert float(chain['outcome']['sale_value']) == 100
-    assert float(chain['outcome']['ares_influenced_value']) == 50
-    assert chain['outcome']['incremental_value'] is None
-    metrics=service.metrics(user)
-    assert metrics['adoption']['numerator'] == 1 and metrics['adoption']['denominator'] == 1
+    query(
+        fixture,
+        "insert into public.recommendations(id,tenant_id,intervention_id,opportunity_id,correlation_id,kind,recommended_action,rationale,confidence,status) values(%s,%s,%s,%s,%s,'create_task','{}','Synthetic rationale',0.8,'approved')",
+        (recommendation, user.tenant_id, id, opp, correlation),
+    )
+    query(
+        fixture,
+        "insert into public.policy_decisions(id,tenant_id,policy_set,policy_version,inputs_hash,verdict) values(%s,%s,'synthetic',1,'synthetic','allow')",
+        (policy, user.tenant_id),
+    )
+    query(
+        fixture,
+        "insert into public.decisions(id,tenant_id,intervention_id,recommendation_id,policy_decision_id,correlation_id,actor_type,actor_id,verdict,source) values(%s,%s,%s,%s,%s,%s,'human',%s,'approved','human')",
+        (decision, user.tenant_id, id, recommendation, policy, correlation, str(user.user_id)),
+    )
+    query(
+        fixture,
+        "insert into public.action_executions(id,tenant_id,intervention_id,correlation_id,executed_action,target,actor_type,actor_id,source,status,idempotency_key,started_at,finished_at,result) values(%s,%s,%s,%s,'{}','{}','ares_agent','synthetic-worker','ares','succeeded',%s,now(),now(),'{\"confirmed\":true,\"version\":3,\"email\":\"private@example.invalid\"}')",
+        (execution, user.tenant_id, id, correlation, str(uuid4())),
+    )
+    query(
+        fixture,
+        "update public.outcomes set action_execution_id=%s,sale_value=100,ares_influenced_value=50,currency='BRL',attribution_level='influenced' where tenant_id=%s and intervention_id=%s",
+        (execution, user.tenant_id, id),
+    )
+    chain = service.latest(user, id)["chain"]
+    assert chain["recommendations"][0]["id"] == str(recommendation)
+    assert chain["decisions"][0]["recommendation_id"] == str(recommendation)
+    assert chain["executions"][0]["id"] == str(execution)
+    assert chain["executions"][0]["provider_confirmation"] == {"confirmed": True, "version": 3}
+    assert chain["outcome"]["action_execution_id"] == str(execution)
+    assert float(chain["outcome"]["sale_value"]) == 100
+    assert float(chain["outcome"]["ares_influenced_value"]) == 50
+    assert chain["outcome"]["incremental_value"] is None
+    metrics = service.metrics(user)
+    assert metrics["adoption"]["numerator"] == 1 and metrics["adoption"]["denominator"] == 1

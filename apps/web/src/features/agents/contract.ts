@@ -20,7 +20,14 @@ export type DocumentUpload = {
   classification?: "internal" | "restricted";
   allowed_roles?: Array<"admin" | "manager" | "seller" | "auditor">;
   owner_user_id?: string | null;
-  purposes?: Array<"chat" | "diagnosis" | "recommendation" | "sentinel" | "portfolio" | "outcome">;
+  purposes?: Array<
+    | "chat"
+    | "diagnosis"
+    | "recommendation"
+    | "sentinel"
+    | "portfolio"
+    | "outcome"
+  >;
   validity_days?: number;
   verified_source: true;
   reason: string;
@@ -28,7 +35,13 @@ export type DocumentUpload = {
 
 export type MemoryQuery = {
   question: string;
-  purpose?: "chat" | "diagnosis" | "recommendation" | "sentinel" | "portfolio" | "outcome";
+  purpose?:
+    | "chat"
+    | "diagnosis"
+    | "recommendation"
+    | "sentinel"
+    | "portfolio"
+    | "outcome";
 };
 
 export type Reason = {
@@ -168,7 +181,9 @@ export type SentinelRuleCommand = {
 };
 
 export type SentinelCriteria_Input = {
-  stages?: Array<"new" | "qualification" | "proposal" | "negotiation" | "won" | "lost">;
+  stages?: Array<
+    "new" | "qualification" | "proposal" | "negotiation" | "won" | "lost"
+  >;
   owner_user_id?: string | null;
   min_value?: number | string | null;
   max_value?: number | string | null;
@@ -177,7 +192,9 @@ export type SentinelCriteria_Input = {
 };
 
 export type SentinelCriteria_Output = {
-  stages?: Array<"new" | "qualification" | "proposal" | "negotiation" | "won" | "lost">;
+  stages?: Array<
+    "new" | "qualification" | "proposal" | "negotiation" | "won" | "lost"
+  >;
   owner_user_id?: string | null;
   min_value?: string | null;
   max_value?: string | null;
@@ -207,7 +224,8 @@ export type SentinelArchiveCommand = {
 export type AgentMetrics = {
   agent_name: string;
   agent_version: string;
-  generation_mode: "agno_openai" | "deterministic_fallback" | "openai_embeddings";
+  generation_mode:
+    "agno_openai" | "deterministic_fallback" | "openai_embeddings";
   model_id: string | null;
   runs: number;
   running: number;
@@ -595,7 +613,8 @@ export type SetEntitlement = {
 export type SetPackage = {
   reason: string;
   expected_version: number;
-  package: "stellar" | "ares_connect" | "ares_crm" | "full_connect" | "full_crm";
+  package:
+    "stellar" | "ares_connect" | "ares_crm" | "full_connect" | "full_crm";
   expires_at?: string | null;
 };
 
@@ -838,4 +857,4 @@ export type CommandCenterSummary = {
   computed_at: string;
 };
 
-export type PackageCode = SetPackage['package'];
+export type PackageCode = SetPackage["package"];

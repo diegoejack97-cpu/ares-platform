@@ -157,4 +157,6 @@ test("Enter sends finding reference and removes text from composer", async () =>
   expect(composer).toHaveValue("");
 });
 
-vi.mock("./chat-recommendation-action", () => ({ChatRecommendationAction: () => null}));
+vi.mock("./chat-recommendation-action", () => ({
+  ChatRecommendationAction: () => null,
+}));

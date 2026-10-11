@@ -206,4 +206,6 @@ test.each([false, true])(
   },
 );
 
-vi.mock("@/features/agents/portfolio-panel", () => ({ PortfolioPanel: () => null }));
+vi.mock("@/features/agents/portfolio-panel", () => ({
+  PortfolioPanel: () => null,
+}));

@@ -493,4 +493,6 @@ test("charts receive honest series and a table alternative exists", async () => 
   ).toBeInTheDocument();
 });
 
-vi.mock("@/features/agents/portfolio-panel", () => ({ PortfolioPanel: () => null }));
+vi.mock("@/features/agents/portfolio-panel", () => ({
+  PortfolioPanel: () => null,
+}));

@@ -30,7 +30,7 @@ def release_gate(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[st
         baseline.get("dataset_version") != candidate.get("dataset_version")
         or candidate.get("dataset_version") != DATASET_VERSION
         or baseline.get("dataset_hash") != candidate.get("dataset_hash")
-        or not candidate.get('dataset_hash')
+        or not candidate.get("dataset_hash")
     ):
         reasons.append("dataset_not_comparable")
     for name, minimum in [
