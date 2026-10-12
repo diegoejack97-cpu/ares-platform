@@ -480,3 +480,49 @@
   font-size: 11px;
   color: var(--ink-3);
 }
+
+/* Compact context and notice so the conversation keeps most of the height. */
+.app-shell .workspace.chat-page .chat-origin,
+.chat-conversation > .chat-notice,
+.chat-suggestions {
+  width: min(100%, 1120px);
+  align-self: center;
+}
+.app-shell .workspace.chat-page .chat-origin {
+  align-items: center;
+  margin-top: 10px;
+  padding: 8px 14px;
+  gap: 6px 16px;
+}
+.app-shell .workspace.chat-page .chat-origin > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+.app-shell .workspace.chat-page .chat-origin .eyebrow {
+  flex-basis: 100%;
+}
+.app-shell .workspace.chat-page .chat-origin p {
+  margin: 0;
+}
+.chat-conversation > .chat-notice {
+  margin: 8px 0 0;
+  padding: 6px 12px;
+  border-radius: var(--control-radius);
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--ambar-lo);
+}
+.chat-history {
+  scrollbar-width: thin;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+}
+.chat-history::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+.chat-history::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 3px;
+}

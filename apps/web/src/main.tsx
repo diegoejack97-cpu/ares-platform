@@ -25,6 +25,26 @@ try {
 document.documentElement.dataset.theme = initialTheme;
 document.documentElement.classList.toggle("dark", initialTheme === "dark");
 
+// After a new deploy, chunks from the previous build disappear. Reload once to pick
+// up the current build instead of leaving a blank screen.
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  try {
+    if (sessionStorage.getItem("ares-chunk-reload") === "1") return;
+    sessionStorage.setItem("ares-chunk-reload", "1");
+  } catch {
+    /* Storage unavailable: reload anyway. */
+  }
+  window.location.reload();
+});
+window.addEventListener("load", () => {
+  try {
+    sessionStorage.removeItem("ares-chunk-reload");
+  } catch {
+    /* Storage unavailable. */
+  }
+});
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <IconContext.Provider value={{ weight: "bold", className: "icon-emboss" }}>
