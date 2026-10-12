@@ -31,23 +31,20 @@ export function LoginPage() {
 
   return (
     <main className="login-page">
-      <section className="login-manifesto" aria-labelledby="login-title">
-        <span className="login-kicker">ARES CONNECT · ACESSO OPERACIONAL</span>
-        <h1 id="login-title">Receita recuperável começa com evidência.</h1>
-        <p>
-          Cada evento comercial entra com origem, identidade e correlação
-          preservadas. Nenhum resultado é atribuído ao ARES sem trilha
-          auditável.
-        </p>
-        <div className="login-chain" aria-label="Cadeia de valor do ARES">
-          <span>OPORTUNIDADE</span>
-          <i />
-          <span>INTERVENÇÃO</span>
-          <i />
-          <span>RESULTADO</span>
-          <i />
-          <strong>VALOR</strong>
-        </div>
+      <section
+        className="login-manifesto login-motion"
+        aria-labelledby="login-title"
+      >
+        <h1 id="login-title" className="sr-only">
+          ARES — inteligência comercial em movimento
+        </h1>
+        <iframe
+          src="/motion/login-motion.html"
+          title="Filme de apresentação do ARES"
+          aria-hidden="true"
+          tabIndex={-1}
+          loading="eager"
+        />
       </section>
       <section className="login-card" aria-label="Entrar no ARES">
         <div className="login-brand">
