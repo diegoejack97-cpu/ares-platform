@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     rate_limit_ip_per_minute: int = 600
     agent_max_concurrent_per_tenant: int = 2
 
+    @field_validator("openai_api_key", "supabase_secret_key", mode="before")
+    @classmethod
+    def strip_pasted_secret(cls, value: object) -> object:
+        """Pasted keys often carry a trailing newline, which breaks HTTP headers."""
+        return value.strip() if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def reject_development_secret_outside_development(self) -> "Settings":
         if not 1 <= self.agent_max_concurrent_per_tenant <= 16:
