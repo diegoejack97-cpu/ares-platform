@@ -2,6 +2,7 @@
 # ruff: noqa: E501
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
@@ -43,6 +44,8 @@ RULES = (
     "Score ARES mede atenção, não venda. Não execute ações nem recupere memória. "
     "Sugestões passam por Policy. Use Markdown breve, fontes e lacunas; associação não é causalidade."
 )
+
+logger = logging.getLogger(__name__)
 
 
 def is_greeting(text: str) -> bool:
@@ -990,7 +993,13 @@ class ChatService:
                         raise ChatFailure("model_response_failed")
             if not completed:
                 raise ChatFailure("model_response_incomplete")
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "chat stream failed correlation_id=%s error=%s",
+                prepared["correlation_id"],
+                type(exc).__name__,
+                exc_info=True,
+            )
             yield sse(
                 "error",
                 {"code": "model_response_failed", "correlation_id": prepared["correlation_id"]},
